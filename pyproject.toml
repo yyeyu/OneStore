@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "avito-ai-assistant"
+version = "0.1.0"
+description = "Platform core scaffold for Avito AI Assistant"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "APScheduler>=3.10,<4.0",
+    "alembic>=1.14,<1.15",
+    "fastapi>=0.115,<0.116",
+    "pydantic-settings>=2.6,<3.0",
+    "psycopg[binary]>=3.2,<3.3",
+    "sqlalchemy>=2.0,<2.1",
+    "typer>=0.15,<0.16",
+    "uvicorn[standard]>=0.32,<0.33",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<0.29",
+    "pytest>=8.3,<9.0",
+]
+
+[project.scripts]
+avito-assistant = "app.main:run"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+testpaths = ["tests"]
+markers = [
+    "integration: requires a live PostgreSQL database and applies migrations before running",
+]

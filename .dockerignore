@@ -1,0 +1,9 @@
+.git
+.gitignore
+.pytest_cache
+.venv
+__pycache__
+*.pyc
+.env
+avito_ai_assistant.egg-info
+pytest-cache-files-*

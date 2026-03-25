@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    command: ["postgres", "-p", "5433"]
+    environment:
+      POSTGRES_DB: avito_ai_assistant
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # Official local DB contour: host 127.0.0.1:5433 -> container 5433
+      - "5433:5433"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d avito_ai_assistant -p 5433"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AVITO_AI_APP_NAME: Avito AI Assistant
+      AVITO_AI_ENVIRONMENT: docker
+      AVITO_AI_DEBUG: "false"
+      AVITO_AI_HOST: 0.0.0.0
+      AVITO_AI_PORT: "8000"
+      AVITO_AI_LOG_LEVEL: INFO
+      # The app always connects through a full DATABASE_URL DSN.
+      AVITO_AI_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5433/avito_ai_assistant
+      AVITO_AI_DB_ECHO: "false"
+      AVITO_AI_DB_POOL_PRE_PING: "true"
+    ports:
+      - "8000:8000"
+    command: ["python", "-m", "app.main", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  postgres_data:
