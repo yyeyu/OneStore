@@ -10,17 +10,13 @@ _CONFIGURED = False
 
 STABLE_LOG_FIELDS = (
     "run_id",
-    "correlation_id",
+    "module_id",
     "module_name",
     "job_name",
     "action_name",
     "account_id",
     "status",
     "trigger_source",
-    "mode",
-    "logical_scope",
-    "job_lock_key",
-    "idempotency_key",
 )
 
 STANDARD_LOG_RECORD_FIELDS = frozenset(

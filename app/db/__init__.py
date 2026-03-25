@@ -4,7 +4,7 @@ from app.db.base import Base
 from app.db.models import (
     ActionLog,
     AvitoAccount,
-    IdempotencyKey,
+    Module,
     ModuleAccountSetting,
     ModuleRun,
 )
@@ -25,9 +25,9 @@ __all__ = [
     "get_engine",
     "get_session",
     "get_session_factory",
-    "IdempotencyKey",
     "make_alembic_config",
     "make_engine",
+    "Module",
     "ModuleAccountSetting",
     "ModuleRun",
     "upgrade_database",

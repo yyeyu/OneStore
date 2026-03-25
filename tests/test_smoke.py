@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from uuid import UUID, uuid4
 
 import app.core.smoke as smoke_module
 from app.actions import ActionResult
 from fastapi import FastAPI
-from app.modules import (
-    AccountMutationResult,
-    AccountSummary,
-    LocalBootstrapSummary,
-    ModuleSettingMutationResult,
-    ModuleSettingSummary,
-)
 
 
 def test_run_smoke_check(monkeypatch) -> None:
@@ -25,21 +17,10 @@ def test_run_smoke_check(monkeypatch) -> None:
         def __exit__(self, exc_type, exc, tb) -> None:
             return None
 
-        def get(self, model, run_id):
-            if str(run_id).endswith("0001"):
-                return SimpleNamespace(
-                    id=run_id,
-                    details_json={
-                        "events": [{"status": "success"}],
-                        "lock": {"scope": "job-lock"},
-                    },
-                )
-            return SimpleNamespace(
-                id=run_id,
-                request_payload={"target": "smoke-target"},
-                result_payload={"mock_effect_applied": True},
-                run_id=UUID("00000000-0000-0000-0000-000000000001"),
-            )
+        def get(self, model, row_id):
+            if str(model.__name__) == "ModuleRun":
+                return SimpleNamespace(id=row_id, finished_at="2026-03-25T00:00:00Z")
+            return SimpleNamespace(id=row_id, run_id=1)
 
     @application.get("/health")
     def health() -> dict[str, str]:
@@ -51,45 +32,24 @@ def test_run_smoke_check(monkeypatch) -> None:
     monkeypatch.setattr(
         smoke_module,
         "build_system_summary",
-        lambda: {
-            "status": "ok",
-            "log_format": "text",
-        },
+        lambda: {"status": "ok", "log_format": "text"},
     )
     monkeypatch.setattr(
         smoke_module,
         "run_scheduler_loop",
-        lambda **kwargs: {
-            "status": "ok",
-            "registered_jobs": ["job:ping", "job:account-ping"],
-            "mode": kwargs["mode"],
-        },
+        lambda **kwargs: {"status": "ok", "registered_jobs": ["job:ping", "job:account-ping"]},
     )
     monkeypatch.setattr(
         smoke_module,
         "ModuleOperationsService",
         lambda: SimpleNamespace(
-            bootstrap_local=lambda **kwargs: LocalBootstrapSummary(
-                account=AccountMutationResult(
+            bootstrap_local=lambda **kwargs: SimpleNamespace(
+                account=SimpleNamespace(
                     created=True,
-                    account=AccountSummary(
-                        account_id=uuid4(),
-                        account_code="smoke-local",
-                        display_name="Smoke Local Account",
-                        external_account_id=None,
-                        is_active=True,
-                    ),
+                    account=SimpleNamespace(id=101),
                 ),
-                module_setting=ModuleSettingMutationResult(
-                    created=True,
-                    module_setting=ModuleSettingSummary(
-                        setting_id=uuid4(),
-                        account_id=uuid4(),
-                        account_code="smoke-local",
-                        module_name="module0",
-                        is_enabled=True,
-                        settings_json={},
-                    ),
+                module_setting=SimpleNamespace(
+                    module_setting=SimpleNamespace(module_id=1, is_enabled=True),
                 ),
             )
         ),
@@ -97,44 +57,22 @@ def test_run_smoke_check(monkeypatch) -> None:
     monkeypatch.setattr(
         smoke_module,
         "run_registered_job",
-        lambda **kwargs: SimpleNamespace(
-            status="success",
-            run_id="00000000-0000-0000-0000-000000000001",
-            correlation_id="corr-1",
-        ),
-    )
-    action_log_ids = iter(
-        [
-            "00000000-0000-0000-0000-000000000002",
-            "00000000-0000-0000-0000-000000000003",
-        ]
+        lambda **kwargs: SimpleNamespace(status="success", run_id=1),
     )
     monkeypatch.setattr(
         smoke_module,
         "execute_demo_action",
         lambda **kwargs: ActionResult(
-            action_log_id=next(action_log_ids),
-            module_name="module0",
+            action_log_id=2,
             action_name="demo_dispatch",
-            account_id="00000000-0000-0000-0000-000000000004",
-            run_id="00000000-0000-0000-0000-000000000001",
-            correlation_id="corr-1",
-            mode=kwargs["mode"],
-            status="dry_run" if kwargs["mode"] == "dry_run" else "success",
-            idempotency_key="key-1",
-            duplicate=False,
-            request_payload={"target": "smoke-target"},
-            result_payload={
-                "mock_effect_applied": kwargs["mode"] == "live",
-            },
+            account_id=101,
+            run_id=1,
+            status="success",
             error_message=None,
+            output={"delivery_state": "mock_dispatched"},
         ),
     )
-    monkeypatch.setattr(
-        smoke_module,
-        "get_session_factory",
-        lambda: lambda: FakeSession(),
-    )
+    monkeypatch.setattr(smoke_module, "get_session_factory", lambda: lambda: FakeSession())
 
     summary = smoke_module.run_smoke_check()
 
@@ -142,18 +80,12 @@ def test_run_smoke_check(monkeypatch) -> None:
     assert summary["system"]["log_format"] == "text"
     assert summary["api_health"]["status"] == "ok"
     assert summary["scheduler"]["status"] == "ok"
-    assert summary["bootstrap_account_code"] == "smoke-local"
+    assert summary["bootstrap_account_id"] == 101
+    assert summary["bootstrap_module_id"] == 1
     assert summary["bootstrap_module_enabled"] is True
     assert summary["job_status"] == "success"
     assert summary["job_recorded"] is True
-    assert summary["action_dry_run_status"] == "dry_run"
-    assert summary["action_live_status"] == "success"
-    assert summary["action_dry_run_duplicate"] is False
-    assert summary["action_live_duplicate"] is False
-    assert summary["journals"]["module_run_has_events"] is True
-    assert summary["journals"]["module_run_has_lock"] is True
-    assert summary["journals"]["dry_action_has_request_payload"] is True
-    assert summary["journals"]["dry_action_has_result_payload"] is True
-    assert summary["journals"]["live_action_has_request_payload"] is True
-    assert summary["journals"]["live_action_has_result_payload"] is True
-    assert summary["journals"]["live_action_has_run_link"] is True
+    assert summary["job_finished_at_present"] is True
+    assert summary["action_status"] == "success"
+    assert summary["action_recorded"] is True
+    assert summary["action_has_run_link"] is True

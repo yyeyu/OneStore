@@ -1,50 +1,52 @@
 # Avito AI Assistant
 
-Module `0` is the platform core for the next development stages: PostgreSQL foundation, Alembic migrations, job runner, Action layer, account bootstrap, observability and smoke checks.
+Module `0` is a minimal platform core with a simplified database schema and
+runtime flow.
 
 ## What Module 0 includes
 
 - FastAPI app with `/health` and `/version`
-- Typer CLI for system, DB, jobs, actions and smoke checks
+- Typer CLI for system checks, account/module ops, jobs, actions, smoke checks
 - PostgreSQL + SQLAlchemy 2 + Alembic foundation
-- Technical tables only: `avito_accounts`, `module_account_settings`, `module_runs`, `action_logs`, `idempotency_keys`
-- Shared `RunContext`, `JobRunner`, APScheduler bootstrap and cross-process job locking
-- Shared Action layer with `dry_run` / `live`, audit log and idempotency
-- Local operator bootstrap via `account_code`
+- Core tables:
+  - `avito_accounts`
+  - `modules`
+  - `module_account_settings`
+  - `module_runs`
+  - `action_logs`
+
+## Database schema summary
+
+1. `avito_accounts`
+   - `id` INTEGER PK
+   - `name`, `client_id` (UNIQUE), `client_secret`, `is_active`
+   - `created_at`, `updated_at`
+2. `modules`
+   - `id` INTEGER PK
+   - `name` UNIQUE
+3. `module_account_settings`
+   - composite PK: `(account_id, module_id)`
+   - `is_enabled`, `created_at`, `updated_at`
+4. `module_runs`
+   - `id` INTEGER PK
+   - `account_id` (nullable), `module_id`, `job_name`, `trigger_source`
+   - `status` (`running`/`success`/`error`), `error_message`
+   - `started_at`, `finished_at`
+5. `action_logs`
+   - `id` INTEGER PK
+   - `account_id` (nullable), `run_id` (nullable)
+   - `action_name`, `status` (`success`/`error`), `error_message`, `created_at`
 
 ## Official runtime contour
 
 - Python: `3.13`
 - PostgreSQL host port: `5433`
-- Local DB DSN: `postgresql+psycopg://postgres:postgres@127.0.0.1:5433/avito_ai_assistant`
-- Docker Compose DB DSN inside containers: `postgresql+psycopg://postgres:postgres@postgres:5433/avito_ai_assistant`
-- Main human-facing account identifier: `account_code`
-
-## Project layout
-
-```text
-app/
-  actions/
-  adapters/
-  api/
-  cli/
-  core/
-  db/
-  jobs/
-  modules/
-tests/
-```
-
-## Prerequisites
-
-- Python `3.13`
-- Docker Desktop with `docker compose`
+- Local DB DSN:
+  `postgresql+psycopg://postgres:postgres@127.0.0.1:5433/avito_ai_assistant`
 
 ## Quick start
 
-Recommended developer path: run the app locally and use Docker only for PostgreSQL.
-
-### 1. Create a local virtual environment
+### 1. Create local virtual environment
 
 ```powershell
 py -3.13 -m venv .venv
@@ -59,16 +61,12 @@ python -m pip install -e ".[dev]"
 Copy-Item .env.example .env
 ```
 
-Default `.env.example` already points to the official local PostgreSQL contour on `127.0.0.1:5433`.
-
 ### 3. Start PostgreSQL
 
 ```powershell
 docker compose up -d postgres
 docker compose ps
 ```
-
-Expected result: `postgres` is `healthy` and published on `0.0.0.0:5433`.
 
 ### 4. Apply migrations
 
@@ -77,51 +75,55 @@ alembic upgrade head
 alembic current
 ```
 
-Expected result: the database reaches revision `0002_module0_core_tables`.
-
-### 5. Run basic checks
+### 5. Seed module catalog
 
 ```powershell
-python -m app.main check-system
-python -m app.main check-db
+python -m app.main ensure-default-modules
+python -m app.main list-modules
 ```
 
-Expected result:
-
-- `check-system` returns `status: ok`
-- `check-db` returns `status: ok` and the DSN on `127.0.0.1:5433`
-
-### 6. Bootstrap one local account
+### 6. Create account and enable module
 
 ```powershell
-python -m app.main bootstrap-local --account-code local-dev --display-name "Local Dev Account"
-python -m app.main list-module-settings --account-code local-dev
+python -m app.main create-account "Local Dev Account" "local-dev-client" "local-dev-secret"
+python -m app.main set-module 1 module0 --enabled
+python -m app.main list-module-settings --account-id 1
 ```
 
-Expected result: account `local-dev` exists and module `module0` is enabled.
-
-### 7. Run one job manually
+### 7. Run job and action
 
 ```powershell
-python -m app.main run-job account-ping --account-code local-dev
+python -m app.main run-job account-ping --account-id 1
+python -m app.main run-demo-action smoke-target "hello"
 ```
 
-Expected result: job returns `status: success` and creates a row in `module_runs`.
-
-### 8. Run the smoke check
+### 8. Run smoke check
 
 ```powershell
 python -m app.main smoke-check
 ```
 
-Expected result:
+## Useful CLI commands
 
-- `status: ok`
-- `job_recorded: true`
-- `action_dry_run_status: dry_run`
-- `action_live_status: success`
+```powershell
+python -m app.main check-system
+python -m app.main check-db
+python -m app.main create-account "Shop A" "shop-a-client" "shop-a-secret"
+python -m app.main list-accounts
+python -m app.main create-module module0
+python -m app.main list-modules
+python -m app.main ensure-default-modules
+python -m app.main set-module 1 module0 --enabled
+python -m app.main list-module-settings --account-id 1
+python -m app.main bootstrap-local
+python -m app.main run-job ping
+python -m app.main run-job account-ping --account-id 1
+python -m app.main run-scheduler --interval-seconds 1 --duration-seconds 3
+python -m app.main run-demo-action test-target "hello"
+python -m app.main smoke-check
+```
 
-## Start the API locally
+## API
 
 ```powershell
 python -m app.main serve --reload
@@ -131,26 +133,6 @@ Then open:
 
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/version`
-
-## Useful CLI commands
-
-```powershell
-python -m app.main check-system
-python -m app.main check-db
-python -m app.main create-account demo-shop "Demo Shop"
-python -m app.main list-accounts
-python -m app.main set-module demo-shop module0 --enabled
-python -m app.main set-module demo-shop module0 --disabled
-python -m app.main list-module-settings --account-code demo-shop
-python -m app.main bootstrap-local --account-code local-dev
-python -m app.main run-job ping
-python -m app.main run-job account-ping --account-code local-dev
-python -m app.main run-job ping --trigger-source retry
-python -m app.main run-scheduler --interval-seconds 1 --duration-seconds 3
-python -m app.main run-demo-action test-target "hello from demo action"
-python -m app.main run-demo-action test-target "hello from demo action" --live
-python -m app.main smoke-check
-```
 
 ## Tests
 
@@ -162,51 +144,18 @@ pytest -m "not integration"
 
 Notes:
 
-- `integration` tests require a reachable PostgreSQL database
-- integration tests automatically apply `alembic upgrade head` once per session
-- `unit` and `integration` are now separated by marker rather than repeated ad-hoc skip logic
+- integration tests require reachable PostgreSQL
+- integration tests apply `alembic upgrade head` once per session
 
-## Optional Docker app startup
+## Logging
 
-If you want to run the API itself in Docker too:
-
-```powershell
-docker compose up -d postgres
-docker compose up --build app
-```
-
-API will be available at `http://127.0.0.1:8000`.
-
-## Logs and diagnostics
-
-The default log format is readable text. For structured logs:
-
-```powershell
-$env:AVITO_AI_LOG_FORMAT="json"
-python -m app.main check-system
-```
-
-Stable investigation fields include:
+Stable investigation fields:
 
 - `run_id`
-- `correlation_id`
+- `module_id`
 - `module_name`
 - `job_name`
+- `action_name`
 - `account_id`
 - `status`
-
-## Handoff to Module 1
-
-Module `0` is ready to accept the next development stage without reshaping the core:
-
-- add new jobs through the existing registry and `JobRunner`
-- add new outward effects through `ActionExecutor`
-- reuse existing account bootstrap, module settings and logs
-
-## Stage boundary
-
-Module `0` still does not include:
-
-- real Avito, Telegram or Google Sheets API calls
-- product tables for items, chats, messages, cases or statuses
-- Module 1 business logic
+- `trigger_source`

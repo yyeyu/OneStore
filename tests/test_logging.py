@@ -30,7 +30,7 @@ def test_configure_logging_text_includes_stable_fields_and_extras() -> None:
             "module_name": "module0",
             "job_name": "ping",
             "run_id": "run-1",
-            "correlation_id": "corr-1",
+            "module_id": 1,
             "account_id": "acc-1",
             "status": "success",
             "custom_detail": "visible",
@@ -42,7 +42,7 @@ def test_configure_logging_text_includes_stable_fields_and_extras() -> None:
     assert "service=Avito AI Assistant" in output
     assert "environment=test" in output
     assert "run_id=run-1" in output
-    assert "correlation_id=corr-1" in output
+    assert "module_id=1" in output
     assert "module_name=module0" in output
     assert "job_name=ping" in output
     assert "account_id=acc-1" in output

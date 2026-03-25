@@ -1,4 +1,4 @@
-"""Scheduler bootstrap for demonstration jobs."""
+"""Scheduler bootstrap for registered jobs."""
 
 from __future__ import annotations
 
@@ -13,10 +13,9 @@ from app.jobs.registry import list_job_definitions, run_registered_jobs_for_acco
 
 def build_scheduler(
     *,
-    mode: str = "dry_run",
     interval_seconds: int | None = None,
 ) -> BackgroundScheduler:
-    """Build an APScheduler instance with all registered demo jobs."""
+    """Build APScheduler with all registered jobs."""
     scheduler = BackgroundScheduler(timezone="UTC")
 
     for definition in list_job_definitions():
@@ -32,7 +31,6 @@ def build_scheduler(
             kwargs={
                 "job_name": definition.name,
                 "trigger_source": "scheduler",
-                "mode": mode,
             },
         )
 
@@ -41,13 +39,12 @@ def build_scheduler(
 
 def run_scheduler_loop(
     *,
-    mode: str = "dry_run",
     interval_seconds: int | None = None,
     duration_seconds: int | None = None,
 ) -> dict[str, Any]:
-    """Run the scheduler until interrupted or until the requested duration elapses."""
+    """Run scheduler until interrupted or until duration elapses."""
     logger = logging.getLogger(__name__)
-    scheduler = build_scheduler(mode=mode, interval_seconds=interval_seconds)
+    scheduler = build_scheduler(interval_seconds=interval_seconds)
     registered_jobs = [job.id for job in scheduler.get_jobs()]
 
     logger.info(
@@ -57,7 +54,6 @@ def run_scheduler_loop(
             "status": "started",
             "trigger_source": "scheduler",
             "registered_jobs": registered_jobs,
-            "mode": mode,
             "interval_seconds": interval_seconds,
             "duration_seconds": duration_seconds,
         },
@@ -94,7 +90,6 @@ def run_scheduler_loop(
     return {
         "status": "ok",
         "registered_jobs": registered_jobs,
-        "mode": mode,
         "interval_seconds": interval_seconds,
         "duration_seconds": duration_seconds,
     }

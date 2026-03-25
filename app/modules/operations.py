@@ -1,21 +1,22 @@
-"""Operational account/module bootstrap helpers for Module 0."""
+"""Operational helpers for account and module management."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-from uuid import UUID
+from collections.abc import Callable, Iterable
+from datetime import datetime
 
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, sessionmaker
 
-from app.db.models import AvitoAccount, ModuleAccountSetting
+from app.db.models import AvitoAccount, Module, ModuleAccountSetting
 from app.db.session import get_session_factory
+
+DEFAULT_MODULE_NAMES = ("module0", "messaging", "catalog", "notifications")
 
 
 class ModuleOperationsError(ValueError):
-    """Raised when operational account/module commands cannot be completed."""
+    """Raised when account/module operations fail."""
 
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -23,54 +24,64 @@ class ModuleOperationsError(ValueError):
 
 
 class AccountSummary(BaseModel):
-    """Human-facing account summary keyed by account_code."""
+    """Public account view without secret leakage."""
 
-    account_id: UUID
-    account_code: str
-    display_name: str
-    external_account_id: str | None
+    id: int
+    name: str
+    client_id: str
     is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class AccountMutationResult(BaseModel):
-    """Result of create/bootstrap account mutation."""
+    """Account mutation result."""
 
     created: bool
     account: AccountSummary
 
 
-class ModuleSettingSummary(BaseModel):
-    """Human-facing module setting summary joined with account_code."""
+class ModuleSummary(BaseModel):
+    """Module catalog item."""
 
-    setting_id: UUID
-    account_id: UUID
-    account_code: str
+    id: int
+    name: str
+
+
+class ModuleMutationResult(BaseModel):
+    """Module mutation result."""
+
+    created: bool
+    module: ModuleSummary
+
+
+class ModuleSettingSummary(BaseModel):
+    """Per-account module switch summary."""
+
+    account_id: int
+    module_id: int
     module_name: str
     is_enabled: bool
-    settings_json: dict[str, Any] | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class ModuleSettingMutationResult(BaseModel):
-    """Result of enable/disable/bootstrap module mutation."""
+    """Module switch mutation result."""
 
     created: bool
     module_setting: ModuleSettingSummary
 
 
 class LocalBootstrapSummary(BaseModel):
-    """Idempotent bootstrap result for local development."""
+    """Bootstrap summary for local smoke flow."""
 
-    account_identifier: str = "account_code"
     account: AccountMutationResult
     module_setting: ModuleSettingMutationResult
 
 
 class ModuleOperationsService:
-    """Operational service for accounts and module settings.
-
-    `account_code` is the primary human-facing identifier for operators and
-    local development workflows. Internal UUIDs remain the canonical DB ids.
-    """
+    """Mutations and lookups for accounts and module catalog."""
 
     def __init__(
         self,
@@ -81,123 +92,157 @@ class ModuleOperationsService:
     def create_account(
         self,
         *,
-        account_code: str,
-        display_name: str,
-        external_account_id: str | None = None,
+        name: str,
+        client_id: str,
+        client_secret: str,
         is_active: bool = True,
     ) -> AccountMutationResult:
-        """Create a new Avito account using account_code as the operator key."""
-        normalized_code = self._normalize_account_code(account_code)
-        normalized_display_name = self._normalize_display_name(display_name)
+        """Create one account."""
+        normalized_name = self._normalize_non_empty(name, field="name")
+        normalized_client_id = self._normalize_non_empty(client_id, field="client_id")
+        normalized_secret = self._normalize_non_empty(client_secret, field="client_secret")
 
         with self._session_factory() as session:
-            self._ensure_account_code_available(
-                session,
-                account_code=normalized_code,
-            )
-            self._ensure_external_account_id_available(
-                session,
-                external_account_id=external_account_id,
-            )
+            existing = session.execute(
+                select(AvitoAccount).where(AvitoAccount.client_id == normalized_client_id)
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise ModuleOperationsError(
+                    "client_id_exists",
+                    f"Account with client_id '{normalized_client_id}' already exists.",
+                )
 
             account = AvitoAccount(
-                account_code=normalized_code,
-                display_name=normalized_display_name,
-                external_account_id=external_account_id,
+                name=normalized_name,
+                client_id=normalized_client_id,
+                client_secret=normalized_secret,
                 is_active=is_active,
             )
             session.add(account)
             session.commit()
             session.refresh(account)
-
-            return AccountMutationResult(
-                created=True,
-                account=self._build_account_summary(account),
-            )
+            return AccountMutationResult(created=True, account=self._build_account_summary(account))
 
     def list_accounts(self) -> tuple[AccountSummary, ...]:
-        """Return all accounts ordered by account_code for operator workflows."""
+        """List accounts ordered by id."""
         with self._session_factory() as session:
-            accounts = session.execute(
-                select(AvitoAccount).order_by(AvitoAccount.account_code)
-            ).scalars()
+            accounts = session.execute(select(AvitoAccount).order_by(AvitoAccount.id)).scalars()
             return tuple(self._build_account_summary(account) for account in accounts)
 
-    def resolve_account_id(
-        self,
-        *,
-        account_id: UUID | None = None,
-        account_code: str | None = None,
-    ) -> UUID | None:
-        """Resolve the preferred operator-facing account selector into internal UUID."""
-        if account_id is None and account_code is None:
-            return None
-
+    def create_module(self, *, name: str) -> ModuleMutationResult:
+        """Create one module catalog item."""
+        normalized_name = self._normalize_non_empty(name, field="module_name")
         with self._session_factory() as session:
-            account: AvitoAccount | None = None
+            existing = session.execute(
+                select(Module).where(Module.name == normalized_name)
+            ).scalar_one_or_none()
+            if existing is not None:
+                return ModuleMutationResult(created=False, module=self._build_module_summary(existing))
 
-            if account_code is not None:
-                normalized_code = self._normalize_account_code(account_code)
-                account = self._get_account_by_code(
-                    session,
-                    account_code=normalized_code,
-                )
-                if account is None:
-                    raise ModuleOperationsError(
-                        "account_not_found",
-                        f"Account '{normalized_code}' does not exist.",
-                    )
+            module = Module(name=normalized_name)
+            session.add(module)
+            session.commit()
+            session.refresh(module)
+            return ModuleMutationResult(created=True, module=self._build_module_summary(module))
 
-            if account_id is not None and account is not None and account.id != account_id:
+    def list_modules(self) -> tuple[ModuleSummary, ...]:
+        """List module catalog."""
+        with self._session_factory() as session:
+            modules = session.execute(select(Module).order_by(Module.id)).scalars()
+            return tuple(self._build_module_summary(item) for item in modules)
+
+    def ensure_default_modules(
+        self,
+        module_names: Iterable[str] = DEFAULT_MODULE_NAMES,
+    ) -> tuple[ModuleSummary, ...]:
+        """Ensure standard module catalog rows exist."""
+        summaries: list[ModuleSummary] = []
+        for name in module_names:
+            result = self.create_module(name=name)
+            summaries.append(result.module)
+        return tuple(summaries)
+
+    def resolve_account_id(self, *, account_id: int | None) -> int | None:
+        """Validate account id existence and return it."""
+        if account_id is None:
+            return None
+        with self._session_factory() as session:
+            account = session.get(AvitoAccount, account_id)
+            if account is None:
                 raise ModuleOperationsError(
-                    "account_identity_mismatch",
-                    (
-                        f"Account id '{account_id}' does not match "
-                        f"account_code '{account_code}'."
-                    ),
+                    "account_not_found",
+                    f"Account '{account_id}' does not exist.",
                 )
+        return account_id
 
-            return account.id if account is not None else account_id
+    def resolve_module_id(self, *, module_name: str) -> int:
+        """Resolve module name to id."""
+        normalized_name = self._normalize_non_empty(module_name, field="module_name")
+        with self._session_factory() as session:
+            module = session.execute(
+                select(Module).where(Module.name == normalized_name)
+            ).scalar_one_or_none()
+            if module is None:
+                raise ModuleOperationsError(
+                    "module_not_found",
+                    f"Module '{normalized_name}' does not exist.",
+                )
+            return module.id
 
     def set_module_state(
         self,
         *,
-        account_code: str,
-        module_name: str,
+        account_id: int,
         is_enabled: bool,
-        settings_json: dict[str, Any] | None = None,
+        module_id: int | None = None,
+        module_name: str | None = None,
     ) -> ModuleSettingMutationResult:
-        """Create or update per-account module settings using account_code."""
-        normalized_code = self._normalize_account_code(account_code)
+        """Create or update module switch for one account."""
+        if module_id is None and module_name is None:
+            raise ModuleOperationsError(
+                "module_selector_missing",
+                "Either module_id or module_name must be provided.",
+            )
 
         with self._session_factory() as session:
-            account = self._get_account_by_code(session, account_code=normalized_code)
+            account = session.get(AvitoAccount, account_id)
             if account is None:
                 raise ModuleOperationsError(
                     "account_not_found",
-                    f"Account '{normalized_code}' does not exist.",
+                    f"Account '{account_id}' does not exist.",
                 )
 
-            module_setting = session.execute(
-                select(ModuleAccountSetting).where(
-                    ModuleAccountSetting.account_id == account.id,
-                    ModuleAccountSetting.module_name == module_name,
-                )
-            ).scalar_one_or_none()
+            resolved_module_id = module_id
+            if resolved_module_id is None:
+                resolved_module = session.execute(
+                    select(Module).where(Module.name == module_name)
+                ).scalar_one_or_none()
+                if resolved_module is None:
+                    raise ModuleOperationsError(
+                        "module_not_found",
+                        f"Module '{module_name}' does not exist.",
+                    )
+                resolved_module_id = resolved_module.id
 
+            module = session.get(Module, resolved_module_id)
+            if module is None:
+                raise ModuleOperationsError(
+                    "module_not_found",
+                    f"Module '{resolved_module_id}' does not exist.",
+                )
+
+            module_setting = session.get(
+                ModuleAccountSetting,
+                {"account_id": account.id, "module_id": module.id},
+            )
             created = module_setting is None
             if module_setting is None:
                 module_setting = ModuleAccountSetting(
                     account_id=account.id,
-                    module_name=module_name,
+                    module_id=module.id,
                 )
 
             module_setting.is_enabled = is_enabled
-            if settings_json is not None:
-                module_setting.settings_json = settings_json
-            elif module_setting.settings_json is None:
-                module_setting.settings_json = {}
-
             session.add(module_setting)
             session.commit()
             session.refresh(module_setting)
@@ -205,212 +250,163 @@ class ModuleOperationsService:
             return ModuleSettingMutationResult(
                 created=created,
                 module_setting=self._build_module_setting_summary(
-                    account=account,
                     module_setting=module_setting,
+                    module=module,
                 ),
             )
 
     def list_module_settings(
         self,
         *,
-        account_code: str | None = None,
+        account_id: int | None = None,
+        module_id: int | None = None,
         module_name: str | None = None,
     ) -> tuple[ModuleSettingSummary, ...]:
-        """Return joined module settings, optionally filtered by account_code/module."""
+        """List module switches with optional filters."""
         with self._session_factory() as session:
             query = (
                 select(ModuleAccountSetting)
-                .options(joinedload(ModuleAccountSetting.account))
-                .join(ModuleAccountSetting.account)
-                .order_by(AvitoAccount.account_code, ModuleAccountSetting.module_name)
+                .options(joinedload(ModuleAccountSetting.module))
+                .order_by(ModuleAccountSetting.account_id, ModuleAccountSetting.module_id)
             )
-            if account_code is not None:
-                query = query.where(
-                    AvitoAccount.account_code == self._normalize_account_code(account_code)
-                )
-            if module_name is not None:
-                query = query.where(ModuleAccountSetting.module_name == module_name)
+            if account_id is not None:
+                query = query.where(ModuleAccountSetting.account_id == account_id)
 
-            settings = session.execute(query).scalars()
-            return tuple(
-                self._build_module_setting_summary(
-                    account=module_setting.account,
-                    module_setting=module_setting,
+            resolved_module_id = module_id
+            if resolved_module_id is None and module_name is not None:
+                module = session.execute(select(Module).where(Module.name == module_name)).scalar_one_or_none()
+                if module is None:
+                    return ()
+                resolved_module_id = module.id
+
+            if resolved_module_id is not None:
+                query = query.where(ModuleAccountSetting.module_id == resolved_module_id)
+
+            rows = session.execute(query).scalars()
+            summaries: list[ModuleSettingSummary] = []
+            for row in rows:
+                if row.module is None:
+                    continue
+                summaries.append(
+                    self._build_module_setting_summary(
+                        module_setting=row,
+                        module=row.module,
+                    )
                 )
-                for module_setting in settings
-                if module_setting.account is not None
-            )
+            return tuple(summaries)
 
     def bootstrap_local(
         self,
         *,
-        account_code: str = "local-dev",
-        display_name: str = "Local Dev Account",
+        name: str = "Local Dev Account",
+        client_id: str = "local-dev-client",
+        client_secret: str = "local-dev-secret",
         module_name: str = "module0",
-        external_account_id: str | None = None,
     ) -> LocalBootstrapSummary:
-        """Idempotently prepare one local dev account and enable the requested module."""
-        account_result = self._ensure_account(
-            account_code=account_code,
-            display_name=display_name,
-            external_account_id=external_account_id,
-        )
-        module_result = self.set_module_state(
-            account_code=account_result.account.account_code,
-            module_name=module_name,
-            is_enabled=True,
-            settings_json=None,
-        )
-        return LocalBootstrapSummary(
-            account=account_result,
-            module_setting=module_result,
-        )
-
-    def _ensure_account(
-        self,
-        *,
-        account_code: str,
-        display_name: str,
-        external_account_id: str | None,
-    ) -> AccountMutationResult:
-        normalized_code = self._normalize_account_code(account_code)
-        normalized_display_name = self._normalize_display_name(display_name)
+        """Idempotently bootstrap one local account and enable one module."""
+        normalized_name = self._normalize_non_empty(name, field="name")
+        normalized_client_id = self._normalize_non_empty(client_id, field="client_id")
+        normalized_secret = self._normalize_non_empty(client_secret, field="client_secret")
+        normalized_module_name = self._normalize_non_empty(module_name, field="module_name")
 
         with self._session_factory() as session:
-            account = self._get_account_by_code(session, account_code=normalized_code)
+            account = session.execute(
+                select(AvitoAccount).where(AvitoAccount.client_id == normalized_client_id)
+            ).scalar_one_or_none()
+            created_account = account is None
             if account is None:
-                self._ensure_external_account_id_available(
-                    session,
-                    external_account_id=external_account_id,
-                )
                 account = AvitoAccount(
-                    account_code=normalized_code,
-                    display_name=normalized_display_name,
-                    external_account_id=external_account_id,
+                    name=normalized_name,
+                    client_id=normalized_client_id,
+                    client_secret=normalized_secret,
                     is_active=True,
                 )
-                session.add(account)
-                session.commit()
-                session.refresh(account)
-                return AccountMutationResult(
-                    created=True,
-                    account=self._build_account_summary(account),
-                )
+            else:
+                account.name = normalized_name
+                account.client_secret = normalized_secret
+                account.is_active = True
 
-            if (
-                external_account_id is not None
-                and account.external_account_id != external_account_id
-            ):
-                self._ensure_external_account_id_available(
-                    session,
-                    external_account_id=external_account_id,
-                    ignore_account_id=account.id,
-                )
-                account.external_account_id = external_account_id
-
-            account.display_name = normalized_display_name
-            account.is_active = True
             session.add(account)
+            session.flush()
+
+            module = session.execute(
+                select(Module).where(Module.name == normalized_module_name)
+            ).scalar_one_or_none()
+            if module is None:
+                module = Module(name=normalized_module_name)
+                session.add(module)
+                session.flush()
+
+            module_setting = session.get(
+                ModuleAccountSetting,
+                {"account_id": account.id, "module_id": module.id},
+            )
+            created_setting = module_setting is None
+            if module_setting is None:
+                module_setting = ModuleAccountSetting(
+                    account_id=account.id,
+                    module_id=module.id,
+                    is_enabled=True,
+                )
+            else:
+                module_setting.is_enabled = True
+
+            session.add(module_setting)
             session.commit()
             session.refresh(account)
-            return AccountMutationResult(
-                created=False,
-                account=self._build_account_summary(account),
-            )
+            session.refresh(module_setting)
+            session.refresh(module)
 
-    @staticmethod
-    def _normalize_account_code(account_code: str) -> str:
-        normalized = account_code.strip()
-        if not normalized:
-            raise ModuleOperationsError(
-                "account_code_invalid",
-                "account_code must not be empty.",
-            )
-        return normalized
-
-    @staticmethod
-    def _normalize_display_name(display_name: str) -> str:
-        normalized = display_name.strip()
-        if not normalized:
-            raise ModuleOperationsError(
-                "display_name_invalid",
-                "display_name must not be empty.",
-            )
-        return normalized
-
-    @staticmethod
-    def _get_account_by_code(
-        session: Session,
-        *,
-        account_code: str,
-    ) -> AvitoAccount | None:
-        return session.execute(
-            select(AvitoAccount).where(AvitoAccount.account_code == account_code)
-        ).scalar_one_or_none()
-
-    @staticmethod
-    def _ensure_account_code_available(
-        session: Session,
-        *,
-        account_code: str,
-    ) -> None:
-        existing = ModuleOperationsService._get_account_by_code(
-            session,
-            account_code=account_code,
-        )
-        if existing is not None:
-            raise ModuleOperationsError(
-                "account_code_exists",
-                f"Account '{account_code}' already exists.",
-            )
-
-    @staticmethod
-    def _ensure_external_account_id_available(
-        session: Session,
-        *,
-        external_account_id: str | None,
-        ignore_account_id: UUID | None = None,
-    ) -> None:
-        if external_account_id is None:
-            return
-
-        query = select(AvitoAccount).where(
-            AvitoAccount.external_account_id == external_account_id
-        )
-        if ignore_account_id is not None:
-            query = query.where(AvitoAccount.id != ignore_account_id)
-
-        existing = session.execute(query).scalar_one_or_none()
-        if existing is not None:
-            raise ModuleOperationsError(
-                "external_account_id_exists",
-                (
-                    f"external_account_id '{external_account_id}' is already used by "
-                    f"account '{existing.account_code}'."
+            return LocalBootstrapSummary(
+                account=AccountMutationResult(
+                    created=created_account,
+                    account=self._build_account_summary(account),
+                ),
+                module_setting=ModuleSettingMutationResult(
+                    created=created_setting,
+                    module_setting=self._build_module_setting_summary(
+                        module_setting=module_setting,
+                        module=module,
+                    ),
                 ),
             )
 
     @staticmethod
+    def _normalize_non_empty(value: str, *, field: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ModuleOperationsError(
+                f"{field}_invalid",
+                f"{field} must not be empty.",
+            )
+        return normalized
+
+    @staticmethod
     def _build_account_summary(account: AvitoAccount) -> AccountSummary:
         return AccountSummary(
-            account_id=account.id,
-            account_code=account.account_code,
-            display_name=account.display_name,
-            external_account_id=account.external_account_id,
+            id=account.id,
+            name=account.name,
+            client_id=account.client_id,
             is_active=account.is_active,
+            created_at=account.created_at,
+            updated_at=account.updated_at,
         )
+
+    @staticmethod
+    def _build_module_summary(module: Module) -> ModuleSummary:
+        return ModuleSummary(id=module.id, name=module.name)
 
     @staticmethod
     def _build_module_setting_summary(
         *,
-        account: AvitoAccount,
         module_setting: ModuleAccountSetting,
+        module: Module,
     ) -> ModuleSettingSummary:
         return ModuleSettingSummary(
-            setting_id=module_setting.id,
-            account_id=account.id,
-            account_code=account.account_code,
-            module_name=module_setting.module_name,
+            account_id=module_setting.account_id,
+            module_id=module_setting.module_id,
+            module_name=module.name,
             is_enabled=module_setting.is_enabled,
-            settings_json=module_setting.settings_json,
+            created_at=module_setting.created_at,
+            updated_at=module_setting.updated_at,
         )

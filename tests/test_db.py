@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from app.core.settings import Settings
 from app.db.base import Base
-from app.db.models import ActionLog, AvitoAccount, IdempotencyKey, ModuleAccountSetting, ModuleRun
+from app.db.models import ActionLog, AvitoAccount, Module, ModuleAccountSetting, ModuleRun
 from app.db.session import make_engine
 from app.main import cli
 
@@ -12,22 +12,22 @@ from app.main import cli
 runner = CliRunner()
 
 
-def test_module0_metadata_registers_expected_technical_tables() -> None:
+def test_metadata_registers_expected_tables() -> None:
     assert set(Base.metadata.tables) == {
         "action_logs",
         "avito_accounts",
-        "idempotency_keys",
         "module_account_settings",
         "module_runs",
+        "modules",
     }
 
 
-def test_module0_models_expose_expected_table_names() -> None:
+def test_models_expose_expected_table_names() -> None:
     assert AvitoAccount.__tablename__ == "avito_accounts"
+    assert Module.__tablename__ == "modules"
     assert ModuleAccountSetting.__tablename__ == "module_account_settings"
     assert ModuleRun.__tablename__ == "module_runs"
     assert ActionLog.__tablename__ == "action_logs"
-    assert IdempotencyKey.__tablename__ == "idempotency_keys"
 
 
 def test_make_engine_uses_postgresql_settings() -> None:
@@ -58,7 +58,7 @@ def test_check_db_command_reports_success_with_mocked_connection(monkeypatch) ->
     assert '"status": "ok"' in result.stdout
 
 
-def test_domain_tables_are_not_present_in_module0_metadata() -> None:
+def test_domain_tables_are_not_present_in_metadata() -> None:
     forbidden_tables = {
         "products",
         "items",
@@ -67,5 +67,6 @@ def test_domain_tables_are_not_present_in_module0_metadata() -> None:
         "messages",
         "cases",
         "statuses",
+        "idempotency_keys",
     }
     assert forbidden_tables.isdisjoint(Base.metadata.tables.keys())

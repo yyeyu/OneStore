@@ -1,5 +1,4 @@
 import json
-from uuid import UUID, uuid4
 
 import app.cli.app as cli_app_module
 from typer.testing import CliRunner
@@ -10,10 +9,12 @@ from app.modules import (
     AccountMutationResult,
     AccountSummary,
     LocalBootstrapSummary,
+    ModuleMutationResult,
     ModuleOperationsError,
     ModuleRunAccessError,
     ModuleSettingMutationResult,
     ModuleSettingSummary,
+    ModuleSummary,
 )
 
 
@@ -22,59 +23,73 @@ runner = CliRunner()
 
 class FakeOperationsService:
     def __init__(self) -> None:
-        self.account_id = uuid4()
-        self.setting_id = uuid4()
         self.create_calls: list[dict[str, object]] = []
         self.set_module_calls: list[dict[str, object]] = []
-        self.resolve_calls: list[dict[str, object]] = []
 
     def create_account(self, **kwargs):
         self.create_calls.append(kwargs)
         return AccountMutationResult(
             created=True,
             account=AccountSummary(
-                account_id=self.account_id,
-                account_code=kwargs["account_code"],
-                display_name=kwargs["display_name"],
-                external_account_id=kwargs.get("external_account_id"),
+                id=101,
+                name=kwargs["name"],
+                client_id=kwargs["client_id"],
                 is_active=kwargs.get("is_active", True),
+                created_at="2026-03-25T00:00:00Z",
+                updated_at="2026-03-25T00:00:00Z",
             ),
         )
 
     def list_accounts(self):
         return (
             AccountSummary(
-                account_id=self.account_id,
-                account_code="acc-demo",
-                display_name="Demo Account",
-                external_account_id=None,
+                id=101,
+                name="Demo Account",
+                client_id="demo-client",
                 is_active=True,
+                created_at="2026-03-25T00:00:00Z",
+                updated_at="2026-03-25T00:00:00Z",
             ),
         )
+
+    def create_module(self, **kwargs):
+        return ModuleMutationResult(
+            created=True,
+            module=ModuleSummary(id=1, name=kwargs["name"]),
+        )
+
+    def list_modules(self):
+        return (
+            ModuleSummary(id=1, name="module0"),
+            ModuleSummary(id=2, name="messaging"),
+        )
+
+    def ensure_default_modules(self):
+        return self.list_modules()
 
     def set_module_state(self, **kwargs):
         self.set_module_calls.append(kwargs)
         return ModuleSettingMutationResult(
             created=True,
             module_setting=ModuleSettingSummary(
-                setting_id=self.setting_id,
-                account_id=self.account_id,
-                account_code=kwargs["account_code"],
-                module_name=kwargs["module_name"],
+                account_id=kwargs["account_id"],
+                module_id=1,
+                module_name=kwargs.get("module_name") or "module0",
                 is_enabled=kwargs["is_enabled"],
-                settings_json=kwargs.get("settings_json") or {},
+                created_at="2026-03-25T00:00:00Z",
+                updated_at="2026-03-25T00:00:00Z",
             ),
         )
 
     def list_module_settings(self, **kwargs):
         return (
             ModuleSettingSummary(
-                setting_id=self.setting_id,
-                account_id=self.account_id,
-                account_code=kwargs.get("account_code") or "acc-demo",
+                account_id=kwargs.get("account_id") or 101,
+                module_id=1,
                 module_name=kwargs.get("module_name") or "module0",
                 is_enabled=True,
-                settings_json={"note": "ok"},
+                created_at="2026-03-25T00:00:00Z",
+                updated_at="2026-03-25T00:00:00Z",
             ),
         )
 
@@ -83,44 +98,26 @@ class FakeOperationsService:
             account=AccountMutationResult(
                 created=False,
                 account=AccountSummary(
-                    account_id=self.account_id,
-                    account_code=kwargs["account_code"],
-                    display_name=kwargs["display_name"],
-                    external_account_id=kwargs.get("external_account_id"),
+                    id=101,
+                    name=kwargs["name"],
+                    client_id=kwargs["client_id"],
                     is_active=True,
+                    created_at="2026-03-25T00:00:00Z",
+                    updated_at="2026-03-25T00:00:00Z",
                 ),
             ),
             module_setting=ModuleSettingMutationResult(
                 created=False,
                 module_setting=ModuleSettingSummary(
-                    setting_id=self.setting_id,
-                    account_id=self.account_id,
-                    account_code=kwargs["account_code"],
+                    account_id=101,
+                    module_id=1,
                     module_name=kwargs["module_name"],
                     is_enabled=True,
-                    settings_json={},
+                    created_at="2026-03-25T00:00:00Z",
+                    updated_at="2026-03-25T00:00:00Z",
                 ),
             ),
         )
-
-    def resolve_account_id(
-        self,
-        *,
-        account_id: UUID | None = None,
-        account_code: str | None = None,
-    ) -> UUID | None:
-        self.resolve_calls.append(
-            {
-                "account_id": account_id,
-                "account_code": account_code,
-            }
-        )
-        if account_code == "missing":
-            raise ModuleOperationsError(
-                "account_not_found",
-                "Account 'missing' does not exist.",
-            )
-        return self.account_id if account_code is not None else account_id
 
 
 def test_check_system_command() -> None:
@@ -130,8 +127,7 @@ def test_check_system_command() -> None:
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
     assert payload["version"] == "0.1.0"
-    assert payload["log_format"] == "text"
-    assert payload["account_identifier"] == "account_code"
+    assert payload["account_identifier"] == "account_id"
 
 
 def test_check_db_command(monkeypatch) -> None:
@@ -150,19 +146,13 @@ def test_run_demo_action_command(monkeypatch) -> None:
         cli_app_module,
         "execute_demo_action",
         lambda **kwargs: ActionResult(
-            action_log_id="action-log-1",
-            module_name="module0",
+            action_log_id=1,
             action_name="demo_dispatch",
-            account_id=None,
-            run_id=None,
-            correlation_id="corr-1",
-            mode="dry_run",
-            status="dry_run",
-            idempotency_key="key-1",
-            duplicate=False,
-            request_payload={"target": kwargs["target"]},
-            result_payload={"mock_effect_applied": False},
+            account_id=kwargs.get("account_id"),
+            run_id=kwargs.get("run_id"),
+            status="success",
             error_message=None,
+            output={"target": kwargs["target"]},
         ),
     )
 
@@ -170,108 +160,100 @@ def test_run_demo_action_command(monkeypatch) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["status"] == "dry_run"
+    assert payload["status"] == "success"
     assert payload["action_name"] == "demo_dispatch"
 
 
 def test_create_account_command(monkeypatch) -> None:
     service = FakeOperationsService()
-    monkeypatch.setattr(
-        cli_app_module,
-        "get_module_operations_service",
-        lambda: service,
-    )
+    monkeypatch.setattr(cli_app_module, "get_module_operations_service", lambda: service)
 
-    result = runner.invoke(cli, ["create-account", "acc-demo", "Demo Account"])
+    result = runner.invoke(
+        cli,
+        ["create-account", "Demo Account", "demo-client", "demo-secret"],
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["account_identifier"] == "account_code"
-    assert payload["item"]["account"]["account_code"] == "acc-demo"
+    assert payload["item"]["account"]["client_id"] == "demo-client"
 
 
-def test_set_module_command_parses_settings_json(monkeypatch) -> None:
+def test_set_module_command(monkeypatch) -> None:
     service = FakeOperationsService()
-    monkeypatch.setattr(
-        cli_app_module,
-        "get_module_operations_service",
-        lambda: service,
-    )
+    monkeypatch.setattr(cli_app_module, "get_module_operations_service", lambda: service)
 
-    result = runner.invoke(
-        cli,
-        [
-            "set-module",
-            "acc-demo",
-            "module0",
-            "--settings-json",
-            "{\"interval\": 15}",
-        ],
-    )
+    result = runner.invoke(cli, ["set-module", "101", "module0", "--enabled"])
 
     assert result.exit_code == 0
-    assert service.set_module_calls[0]["settings_json"] == {"interval": 15}
+    assert service.set_module_calls[0]["account_id"] == 101
     payload = json.loads(result.stdout)
     assert payload["item"]["module_setting"]["is_enabled"] is True
 
 
 def test_list_accounts_command(monkeypatch) -> None:
     service = FakeOperationsService()
-    monkeypatch.setattr(
-        cli_app_module,
-        "get_module_operations_service",
-        lambda: service,
-    )
+    monkeypatch.setattr(cli_app_module, "get_module_operations_service", lambda: service)
 
     result = runner.invoke(cli, ["list-accounts"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["items"][0]["account_code"] == "acc-demo"
+    assert payload["items"][0]["id"] == 101
+
+
+def test_list_modules_command(monkeypatch) -> None:
+    service = FakeOperationsService()
+    monkeypatch.setattr(cli_app_module, "get_module_operations_service", lambda: service)
+
+    result = runner.invoke(cli, ["list-modules"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["items"][0]["name"] == "module0"
 
 
 def test_bootstrap_local_command(monkeypatch) -> None:
     service = FakeOperationsService()
-    monkeypatch.setattr(
-        cli_app_module,
-        "get_module_operations_service",
-        lambda: service,
-    )
+    monkeypatch.setattr(cli_app_module, "get_module_operations_service", lambda: service)
 
-    result = runner.invoke(cli, ["bootstrap-local", "--account-code", "local-dev"])
+    result = runner.invoke(
+        cli,
+        [
+            "bootstrap-local",
+            "--name",
+            "Local Dev Account",
+            "--client-id",
+            "local-dev-client",
+            "--client-secret",
+            "local-dev-secret",
+        ],
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["item"]["account"]["account"]["account_code"] == "local-dev"
+    assert payload["item"]["account"]["account"]["client_id"] == "local-dev-client"
 
 
-def test_run_job_command_resolves_account_code(monkeypatch) -> None:
-    service = FakeOperationsService()
+def test_run_job_command_passes_account_id(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class FakeJobResult:
         status = "success"
 
         def model_dump(self, mode: str = "json") -> dict[str, object]:
-            return {"status": "success", "job_name": "account-ping"}
+            return {"status": "success", "job_name": "account-ping", "account_id": 101}
 
-    monkeypatch.setattr(
-        cli_app_module,
-        "get_module_operations_service",
-        lambda: service,
-    )
     monkeypatch.setattr(
         cli_app_module,
         "run_registered_job",
         lambda **kwargs: captured.update(kwargs) or FakeJobResult(),
     )
 
-    result = runner.invoke(cli, ["run-job", "account-ping", "--account-code", "acc-demo"])
+    result = runner.invoke(cli, ["run-job", "account-ping", "--account-id", "101"])
 
     assert result.exit_code == 0
-    assert service.resolve_calls[0]["account_code"] == "acc-demo"
-    assert captured["account_id"] == service.account_id
+    assert captured["account_id"] == 101
 
 
 def test_smoke_check_command(monkeypatch) -> None:
@@ -281,8 +263,7 @@ def test_smoke_check_command(monkeypatch) -> None:
         lambda: {
             "status": "ok",
             "job_status": "success",
-            "action_dry_run_status": "dry_run",
-            "action_live_status": "success",
+            "action_status": "success",
         },
     )
 
@@ -291,8 +272,7 @@ def test_smoke_check_command(monkeypatch) -> None:
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["status"] == "ok"
-    assert payload["action_dry_run_status"] == "dry_run"
-    assert payload["action_live_status"] == "success"
+    assert payload["action_status"] == "success"
 
 
 def test_run_job_cli_renders_module_access_error(monkeypatch) -> None:
@@ -302,14 +282,35 @@ def test_run_job_cli_renders_module_access_error(monkeypatch) -> None:
         lambda **kwargs: (_ for _ in ()).throw(
             ModuleRunAccessError(
                 "module_disabled",
-                "Module 'module0' is disabled for account 'acc-demo'.",
+                "Module 'module0' is disabled for account '101'.",
             )
         ),
     )
 
-    result = runner.invoke(cli, ["run-job", "account-ping", "--account-id", str(uuid4())])
+    result = runner.invoke(cli, ["run-job", "account-ping", "--account-id", "101"])
 
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["status"] == "error"
     assert payload["error_code"] == "module_disabled"
+
+
+def test_create_account_cli_renders_operations_error(monkeypatch) -> None:
+    class BrokenService(FakeOperationsService):
+        def create_account(self, **kwargs):
+            raise ModuleOperationsError("client_id_exists", "already exists")
+
+    monkeypatch.setattr(
+        cli_app_module,
+        "get_module_operations_service",
+        lambda: BrokenService(),
+    )
+
+    result = runner.invoke(
+        cli,
+        ["create-account", "Demo Account", "demo-client", "demo-secret"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error_code"] == "client_id_exists"

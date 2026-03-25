@@ -22,9 +22,7 @@ class PingJob:
             "module_name": context.module_name,
             "job_name": context.job_name,
             "trigger_source": context.trigger_source,
-            "mode": context.mode,
-            "account_id": str(context.account_id) if context.account_id else None,
-            "correlation_id": context.correlation_id,
+            "account_id": context.account_id,
         }
 
 

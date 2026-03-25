@@ -1,7 +1,6 @@
 """Job execution primitives for Module 0."""
 
 from app.jobs.context import RunContext
-from app.jobs.locks import JobLockAcquisition, JobLockManager
 from app.jobs.ping import PingJob
 from app.jobs.registry import (
     JobDefinition,
@@ -17,8 +16,6 @@ __all__ = [
     "build_scheduler",
     "get_job_definition",
     "JobDefinition",
-    "JobLockAcquisition",
-    "JobLockManager",
     "JobRunResult",
     "JobRunner",
     "list_job_definitions",

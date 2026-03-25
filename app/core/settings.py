@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     )
     db_echo: bool = False
     db_pool_pre_ping: bool = True
-    job_lock_timeout_seconds: int = 300
     version: str = __version__
 
     @property

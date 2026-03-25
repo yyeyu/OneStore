@@ -18,6 +18,5 @@ def build_system_summary(settings: Settings | None = None) -> dict[str, Any]:
         "debug": active_settings.debug,
         "log_level": active_settings.log_level,
         "log_format": active_settings.log_format,
-        "account_identifier": "account_code",
-        "job_lock_timeout_seconds": active_settings.job_lock_timeout_seconds,
+        "account_identifier": "account_id",
     }

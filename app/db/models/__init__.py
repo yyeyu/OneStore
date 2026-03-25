@@ -3,7 +3,7 @@
 from app.db.models.module0 import (
     ActionLog,
     AvitoAccount,
-    IdempotencyKey,
+    Module,
     ModuleAccountSetting,
     ModuleRun,
 )
@@ -11,7 +11,7 @@ from app.db.models.module0 import (
 __all__ = [
     "ActionLog",
     "AvitoAccount",
-    "IdempotencyKey",
+    "Module",
     "ModuleAccountSetting",
     "ModuleRun",
 ]
