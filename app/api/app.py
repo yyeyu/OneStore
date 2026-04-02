@@ -2,9 +2,13 @@
 
 from contextlib import asynccontextmanager
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
+from app.admin.routes import router as admin_router
+from app.api.routes.inbox import router as inbox_router
 from app.api.routes.system import router as system_router
 from app.core.logging import configure_logging
 from app.core.settings import get_settings
@@ -45,5 +49,13 @@ def create_app() -> FastAPI:
         debug=settings.debug,
         lifespan=lifespan,
     )
+    admin_static_dir = Path(__file__).resolve().parents[1] / "admin" / "static"
+    application.mount(
+        "/admin/static",
+        StaticFiles(directory=admin_static_dir),
+        name="admin-static",
+    )
+    application.include_router(admin_router)
+    application.include_router(inbox_router)
     application.include_router(system_router)
     return application

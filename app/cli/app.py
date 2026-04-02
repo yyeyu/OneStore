@@ -6,23 +6,25 @@ import json
 import logging
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 import typer
 import uvicorn
 
-from app.actions import execute_demo_action
+from app.actions import execute_probe_action
 from app.core.diagnostics import build_system_summary
 from app.core.logging import configure_logging
 from app.core.smoke import run_smoke_check
 from app.core.settings import get_settings
 from app.db.session import check_database_connection
-from app.jobs import run_registered_job, run_scheduler_loop
+from app.inbox import InboxService
+from app.jobs import get_job_definition, run_registered_job, run_scheduler_loop
 from app.modules import ModuleOperationsError, ModuleOperationsService, ModuleRunAccessError
 
 cli = typer.Typer(
     add_completion=False,
-    help="Avito AI Assistant platform CLI.",
+    help="OneStore platform CLI.",
     no_args_is_help=True,
 )
 
@@ -30,6 +32,11 @@ cli = typer.Typer(
 def get_module_operations_service() -> ModuleOperationsService:
     """Return account/module operations service."""
     return ModuleOperationsService()
+
+
+def get_inbox_service() -> InboxService:
+    """Return inbox service facade."""
+    return InboxService()
 
 
 def _configure_runtime_logging() -> None:
@@ -42,8 +49,8 @@ def _configure_runtime_logging() -> None:
     )
 
 
-def _emit_json(payload: dict[str, Any]) -> None:
-    typer.echo(json.dumps(payload, indent=2))
+def _emit_json(payload: Any) -> None:
+    typer.echo(json.dumps(jsonable_encoder(payload), indent=2))
 
 
 def _emit_cli_error(*, code: str, message: str) -> None:
@@ -55,6 +62,10 @@ def _emit_cli_error(*, code: str, message: str) -> None:
         }
     )
     raise typer.Exit(code=1)
+
+
+def _emit_exception_as_cli_error(exc: Exception, *, default_code: str) -> None:
+    _emit_cli_error(code=getattr(exc, "code", default_code), message=str(exc))
 
 
 def _emit_job_result(result) -> None:
@@ -134,6 +145,11 @@ def create_account(
     name: str = typer.Argument(..., help="Human-readable account name."),
     client_id: str = typer.Argument(..., help="API client id."),
     client_secret: str = typer.Argument(..., help="API client secret."),
+    avito_user_id: str | None = typer.Option(
+        None,
+        "--avito-user-id",
+        help="Optional Avito Messenger user identifier.",
+    ),
     is_active: bool = typer.Option(
         True,
         "--active/--inactive",
@@ -149,6 +165,7 @@ def create_account(
             name=name,
             client_id=client_id,
             client_secret=client_secret,
+            avito_user_id=avito_user_id,
             is_active=is_active,
         )
     except ModuleOperationsError as exc:
@@ -249,7 +266,12 @@ def bootstrap_local(
         "local-dev-secret",
         help="Client secret for local account.",
     ),
-    module_name: str = typer.Option("module0", help="Module to enable."),
+    avito_user_id: str | None = typer.Option(
+        None,
+        "--avito-user-id",
+        help="Optional Avito Messenger user identifier.",
+    ),
+    module_name: str = typer.Option("system_core", help="Module to enable."),
 ) -> None:
     """Idempotently bootstrap one local account and enable one module."""
     _configure_runtime_logging()
@@ -259,6 +281,7 @@ def bootstrap_local(
             name=name,
             client_id=client_id,
             client_secret=client_secret,
+            avito_user_id=avito_user_id,
             module_name=module_name,
         )
     except ModuleOperationsError as exc:
@@ -278,7 +301,7 @@ def run_job(
     fail: bool = typer.Option(
         False,
         "--fail",
-        help="Force ping job to fail for lifecycle checks.",
+        help="Force the temporary probe job to fail for lifecycle checks.",
     ),
 ) -> None:
     """Run one registered job."""
@@ -289,12 +312,22 @@ def run_job(
             message="trigger_source must be one of: manual, scheduler, event, retry.",
         )
 
+    job_definition = get_job_definition(job_name)
+    job_options: dict[str, Any] = {}
+    if fail:
+        if job_definition.name not in {"system-probe", "account-system-probe"}:
+            _emit_cli_error(
+                code="fail_option_unsupported",
+                message="--fail is supported only for temporary probe jobs.",
+            )
+        job_options["should_fail"] = True
+
     try:
         result = run_registered_job(
             job_name=job_name,
             trigger_source=trigger_source,
             account_id=account_id,
-            should_fail=fail,
+            **job_options,
         )
     except (ModuleRunAccessError, ModuleOperationsError) as exc:
         _emit_cli_error(code=exc.code, message=str(exc))
@@ -302,14 +335,14 @@ def run_job(
     _emit_job_result(result)
 
 
-@cli.command("run-test-job")
-def run_test_job(
+@cli.command("run-system-probe")
+def run_system_probe(
     account_id: int | None = typer.Option(None, help="Optional account id."),
-    fail: bool = typer.Option(False, "--fail", help="Force ping job to fail."),
+    fail: bool = typer.Option(False, "--fail", help="Force system probe job to fail."),
 ) -> None:
-    """Alias for run-job ping."""
+    """Alias for run-job system-probe."""
     run_job(
-        job_name="ping",
+        job_name="system-probe",
         account_id=account_id,
         trigger_source="manual",
         fail=fail,
@@ -338,21 +371,21 @@ def run_scheduler(
     _emit_json(summary)
 
 
-@cli.command("run-demo-action")
-def run_demo_action(
-    target: str = typer.Argument(..., help="Demo target identifier."),
-    message: str = typer.Argument(..., help="Demo message payload."),
+@cli.command("run-probe-action")
+def run_probe_action(
+    target: str = typer.Argument(..., help="Probe target identifier."),
+    message: str = typer.Argument(..., help="Probe message payload."),
     account_id: int | None = typer.Option(None, help="Optional account id."),
     run_id: int | None = typer.Option(None, help="Optional module run id."),
     fail: bool = typer.Option(
         False,
         "--fail",
-        help="Force demo action to fail.",
+        help="Force probe action to fail.",
     ),
 ) -> None:
-    """Run demo action through simplified ActionExecutor."""
+    """Run the temporary probe action through the shared ActionExecutor."""
     _configure_runtime_logging()
-    result = execute_demo_action(
+    result = execute_probe_action(
         target=target,
         message=message,
         account_id=account_id,
@@ -368,6 +401,87 @@ def smoke_check() -> None:
     _configure_runtime_logging()
     summary = run_smoke_check()
     _emit_json(summary)
+
+
+@cli.command("sync-inbox")
+def sync_inbox(
+    account_id: int = typer.Option(..., "--account-id", help="Target account id."),
+) -> None:
+    """Run inbox sync for one account."""
+    _configure_runtime_logging()
+    inbox_service = get_inbox_service()
+
+    try:
+        result = inbox_service.sync_account_inbox(account_id)
+    except Exception as exc:
+        _emit_exception_as_cli_error(exc, default_code="inbox_sync_failed")
+
+    _emit_json({"status": "ok", "item": result})
+
+
+@cli.command("list-chats")
+def list_chats(
+    account_id: int = typer.Option(..., "--account-id", help="Target account id."),
+) -> None:
+    """List inbox chats for one account."""
+    _configure_runtime_logging()
+    inbox_service = get_inbox_service()
+
+    try:
+        items = inbox_service.list_chats(account_id=account_id)
+    except Exception as exc:
+        _emit_exception_as_cli_error(exc, default_code="list_chats_failed")
+
+    _emit_json({"status": "ok", "items": items})
+
+
+@cli.command("list-messages")
+def list_messages(
+    account_id: int = typer.Option(..., "--account-id", help="Target account id."),
+    chat_id: int | None = typer.Option(None, "--chat-id", help="Optional chat id filter."),
+) -> None:
+    """List inbox messages for one account, optionally narrowed to one chat."""
+    _configure_runtime_logging()
+    inbox_service = get_inbox_service()
+
+    try:
+        items = inbox_service.list_messages(account_id=account_id, chat_id=chat_id)
+    except Exception as exc:
+        _emit_exception_as_cli_error(exc, default_code="list_messages_failed")
+
+    _emit_json({"status": "ok", "items": items})
+
+
+@cli.command("list-clients")
+def list_clients(
+    account_id: int = typer.Option(..., "--account-id", help="Target account id."),
+) -> None:
+    """List known Avito clients for one account."""
+    _configure_runtime_logging()
+    inbox_service = get_inbox_service()
+
+    try:
+        items = inbox_service.list_clients(account_id=account_id)
+    except Exception as exc:
+        _emit_exception_as_cli_error(exc, default_code="list_clients_failed")
+
+    _emit_json({"status": "ok", "items": items})
+
+
+@cli.command("list-listings")
+def list_listings(
+    account_id: int = typer.Option(..., "--account-id", help="Target account id."),
+) -> None:
+    """List known listing references for one account."""
+    _configure_runtime_logging()
+    inbox_service = get_inbox_service()
+
+    try:
+        items = inbox_service.list_listings(account_id=account_id)
+    except Exception as exc:
+        _emit_exception_as_cli_error(exc, default_code="list_listings_failed")
+
+    _emit_json({"status": "ok", "items": items})
 
 
 @cli.command("serve")

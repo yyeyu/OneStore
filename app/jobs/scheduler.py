@@ -19,6 +19,8 @@ def build_scheduler(
     scheduler = BackgroundScheduler(timezone="UTC")
 
     for definition in list_job_definitions():
+        if not definition.scheduler_enabled:
+            continue
         seconds = interval_seconds or definition.default_interval_seconds
         scheduler.add_job(
             run_registered_jobs_for_accounts,
@@ -50,7 +52,7 @@ def run_scheduler_loop(
     logger.info(
         "Scheduler bootstrap complete",
         extra={
-            "module_name": "module0",
+            "module_name": "system_core",
             "status": "started",
             "trigger_source": "scheduler",
             "registered_jobs": registered_jobs,
@@ -70,7 +72,7 @@ def run_scheduler_loop(
         logger.info(
             "Scheduler interrupted by user",
             extra={
-                "module_name": "module0",
+                "module_name": "system_core",
                 "status": "interrupted",
                 "trigger_source": "scheduler",
             },
@@ -80,7 +82,7 @@ def run_scheduler_loop(
         logger.info(
             "Scheduler stopped",
             extra={
-                "module_name": "module0",
+                "module_name": "system_core",
                 "status": "stopped",
                 "trigger_source": "scheduler",
                 "registered_jobs": registered_jobs,

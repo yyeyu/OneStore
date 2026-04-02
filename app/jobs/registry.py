@@ -1,4 +1,4 @@
-"""Registry for demo jobs and shared execution entrypoints."""
+"""Registry for platform jobs and shared execution entrypoints."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.jobs.context import RunContext
-from app.jobs.ping import build_ping_job
+from app.jobs.inbox_health import build_inbox_health_check_job
+from app.jobs.inbox_sync import build_inbox_sync_all_job, build_inbox_sync_job
+from app.jobs.system_probe import build_system_probe_job
 from app.jobs.runner import JobRunResult, JobRunner
 from app.modules import ModuleAccessService
 
@@ -24,24 +26,54 @@ class JobDefinition:
     default_interval_seconds: int
     factory: JobFactory
     requires_account: bool = False
+    scheduler_enabled: bool = True
 
 
 JOB_REGISTRY: dict[str, JobDefinition] = {
-    "ping": JobDefinition(
-        name="ping",
-        module_name="module0",
-        description="Demonstration ping job for JobRunner and scheduler checks.",
+    "system-probe": JobDefinition(
+        name="system-probe",
+        module_name="system_core",
+        description="Temporary platform probe job for JobRunner and scheduler checks.",
         default_interval_seconds=30,
-        factory=build_ping_job,
+        factory=build_system_probe_job,
         requires_account=False,
+        scheduler_enabled=True,
     ),
-    "account-ping": JobDefinition(
-        name="account-ping",
-        module_name="module0",
-        description="Ping job that requires an enabled account/module pair.",
+    "account-system-probe": JobDefinition(
+        name="account-system-probe",
+        module_name="system_core",
+        description="Temporary probe job that requires an enabled account/module pair.",
         default_interval_seconds=30,
-        factory=build_ping_job,
+        factory=build_system_probe_job,
         requires_account=True,
+        scheduler_enabled=False,
+    ),
+    "inbox-sync": JobDefinition(
+        name="inbox-sync",
+        module_name="module2_inbox",
+        description="Sync one Avito inbox for one enabled account.",
+        default_interval_seconds=300,
+        factory=build_inbox_sync_job,
+        requires_account=True,
+        scheduler_enabled=False,
+    ),
+    "inbox-sync-all": JobDefinition(
+        name="inbox-sync-all",
+        module_name="module2_inbox",
+        description="Fan out inbox sync across all active accounts with module2_inbox enabled.",
+        default_interval_seconds=300,
+        factory=build_inbox_sync_all_job,
+        requires_account=False,
+        scheduler_enabled=True,
+    ),
+    "inbox-health-check": JobDefinition(
+        name="inbox-health-check",
+        module_name="module2_inbox",
+        description="Check last inbox sync timestamp, error state, and sync lag.",
+        default_interval_seconds=600,
+        factory=build_inbox_health_check_job,
+        requires_account=False,
+        scheduler_enabled=True,
     ),
 }
 

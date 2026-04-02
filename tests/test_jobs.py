@@ -5,7 +5,7 @@ from typing import Any
 import app.cli.app as cli_app_module
 from typer.testing import CliRunner
 
-from app.jobs import JobRunner, PingJob, RunContext
+from app.jobs import JobRunner, RunContext, SystemProbeJob
 from app.jobs.runner import JobRunResult
 from app.main import cli
 
@@ -46,13 +46,13 @@ class FakeSession:
 
 def test_run_context_has_minimal_fields() -> None:
     context = RunContext(
-        module_name="module0",
-        job_name="ping",
+        module_name="system_core",
+        job_name="system-probe",
         trigger_source="manual",
     )
 
-    assert context.module_name == "module0"
-    assert context.job_name == "ping"
+    assert context.module_name == "system_core"
+    assert context.job_name == "system-probe"
     assert context.trigger_source == "manual"
     assert context.account_id is None
 
@@ -61,12 +61,12 @@ def test_job_runner_records_success_lifecycle() -> None:
     fake_session = FakeSession()
     runner_instance = JobRunner(session_factory=lambda: fake_session)
     context = RunContext(
-        module_name="module0",
-        job_name="ping",
+        module_name="system_core",
+        job_name="system-probe",
         trigger_source="manual",
     )
 
-    result = runner_instance.run(context=context, module_id=1, job=PingJob())
+    result = runner_instance.run(context=context, module_id=1, job=SystemProbeJob())
     run_record = fake_session.added[0]
 
     assert result.status == "success"
@@ -80,52 +80,52 @@ def test_job_runner_records_error_lifecycle() -> None:
     fake_session = FakeSession()
     runner_instance = JobRunner(session_factory=lambda: fake_session)
     context = RunContext(
-        module_name="module0",
-        job_name="ping",
+        module_name="system_core",
+        job_name="system-probe",
         trigger_source="manual",
     )
 
     result = runner_instance.run(
         context=context,
         module_id=1,
-        job=PingJob(should_fail=True),
+        job=SystemProbeJob(should_fail=True),
     )
     run_record = fake_session.added[0]
 
     assert result.status == "error"
-    assert result.error_message == "Demo ping job failed on purpose."
+    assert result.error_message == "System probe job failed on purpose."
     assert run_record.status == "error"
     assert fake_session.commits == 2
 
 
-def test_run_test_job_command(monkeypatch) -> None:
+def test_run_system_probe_command(monkeypatch) -> None:
     def fake_run_registered_job(**kwargs):
         return JobRunResult(
             run_id=1,
             module_id=1,
-            module_name="module0",
+            module_name="system_core",
             job_name=kwargs["job_name"],
             trigger_source=kwargs["trigger_source"],
             account_id=kwargs.get("account_id"),
             status="success",
             error_message=None,
-            payload={"message": "pong"},
+            payload={"message": "system_probe_ok"},
         )
 
     monkeypatch.setattr(cli_app_module, "run_registered_job", fake_run_registered_job)
 
-    result = runner.invoke(cli, ["run-test-job"])
+    result = runner.invoke(cli, ["run-system-probe"])
 
     assert result.exit_code == 0
     assert '"status": "success"' in result.stdout
 
 
-def test_run_test_job_command_returns_error_exit_code(monkeypatch) -> None:
+def test_run_system_probe_command_returns_error_exit_code(monkeypatch) -> None:
     def fake_run_registered_job(**kwargs):
         return JobRunResult(
             run_id=2,
             module_id=1,
-            module_name="module0",
+            module_name="system_core",
             job_name=kwargs["job_name"],
             trigger_source=kwargs["trigger_source"],
             account_id=kwargs.get("account_id"),
@@ -136,7 +136,7 @@ def test_run_test_job_command_returns_error_exit_code(monkeypatch) -> None:
 
     monkeypatch.setattr(cli_app_module, "run_registered_job", fake_run_registered_job)
 
-    result = runner.invoke(cli, ["run-test-job", "--fail"])
+    result = runner.invoke(cli, ["run-system-probe", "--fail"])
 
     assert result.exit_code == 1
     assert '"status": "error"' in result.stdout

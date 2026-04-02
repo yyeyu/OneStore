@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Listings</h2>
+            <p>Lightweight listing references extracted from chat context.</p>
+        </div>
+    </div>
+    <form class="filter-bar" method="get">
+        <label>
+            Account
+            <select name="account_id">
+                <option value="">All</option>
+                {% for account in page.accounts %}
+                    <option value="{{ account.id }}" {% if page.account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit">Apply</button>
+    </form>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>External Item</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th>URL</th>
+                    <th>Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in page.listings %}
+                <tr>
+                    <td>{{ row.account_name or row.listing.account_id }}</td>
+                    <td>{{ row.listing.external_item_id }}</td>
+                    <td>{{ row.listing.title or "-" }}</td>
+                    <td>{{ row.listing.price_string or "-" }}</td>
+                    <td>{{ row.listing.status_id or "-" }}</td>
+                    <td>{% if row.listing.url %}<a href="{{ row.listing.url }}">open</a>{% else %}-{% endif %}</td>
+                    <td>{{ row.listing.updated_at|datetime }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">No listings stored yet.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

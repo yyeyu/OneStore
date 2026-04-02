@@ -5,5 +5,5 @@
 __pycache__
 *.pyc
 .env
-avito_ai_assistant.egg-info
+*.egg-info
 pytest-cache-files-*

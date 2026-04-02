@@ -1,9 +1,13 @@
-"""Database foundation exports for Module 0."""
+"""Database foundation exports for the platform core and inbox data slice."""
 
 from app.db.base import Base
 from app.db.models import (
     ActionLog,
     AvitoAccount,
+    AvitoChat,
+    AvitoClient,
+    AvitoListingRef,
+    AvitoMessage,
     Module,
     ModuleAccountSetting,
     ModuleRun,
@@ -20,6 +24,10 @@ from app.db.migrations import make_alembic_config, upgrade_database
 __all__ = [
     "ActionLog",
     "AvitoAccount",
+    "AvitoChat",
+    "AvitoClient",
+    "AvitoListingRef",
+    "AvitoMessage",
     "Base",
     "check_database_connection",
     "get_engine",

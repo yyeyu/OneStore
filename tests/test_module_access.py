@@ -22,9 +22,11 @@ def _create_account_with_module_setting(
     session_factory = get_session_factory()
     suffix = uuid4().hex[:8]
     with session_factory() as session:
-        module = session.execute(select(Module).where(Module.name == "module0")).scalar_one_or_none()
+        module = session.execute(
+            select(Module).where(Module.name == "system_core")
+        ).scalar_one_or_none()
         if module is None:
-            module = Module(name="module0")
+            module = Module(name="system_core")
             session.add(module)
             session.flush()
 
@@ -52,8 +54,8 @@ def test_module_access_allows_enabled_account() -> None:
     account_id = _create_account_with_module_setting(is_active=True, is_enabled=True)
 
     decision = service.assert_job_can_run(
-        module_name="module0",
-        job_name="account-ping",
+        module_name="system_core",
+        job_name="account-system-probe",
         account_id=account_id,
         requires_account=True,
     )
@@ -69,8 +71,8 @@ def test_module_access_rejects_missing_account() -> None:
 
     with pytest.raises(ModuleRunAccessError, match="does not exist"):
         service.assert_job_can_run(
-            module_name="module0",
-            job_name="account-ping",
+            module_name="system_core",
+            job_name="account-system-probe",
             account_id=999999999,
             requires_account=True,
         )
@@ -82,11 +84,11 @@ def test_module_access_rejects_disabled_module() -> None:
 
     with pytest.raises(
         ModuleRunAccessError,
-        match=f"Module 'module0' is disabled for account '{account_id}'",
+        match=f"Module 'system_core' is disabled for account '{account_id}'",
     ):
         service.assert_job_can_run(
-            module_name="module0",
-            job_name="account-ping",
+            module_name="system_core",
+            job_name="account-system-probe",
             account_id=account_id,
             requires_account=True,
         )

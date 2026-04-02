@@ -1,4 +1,4 @@
-"""Core Module 0 models aligned with the simplified database schema."""
+"""Platform core models aligned with the simplified database schema."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from app.db.base import Base
 
 
 class AvitoAccount(Base):
-    """Connected Avito account with API credentials."""
+    """Connected Avito account with API credentials and inbox sync state."""
 
     __tablename__ = "avito_accounts"
 
@@ -19,10 +19,27 @@ class AvitoAccount(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     client_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     client_secret: Mapped[str] = mapped_column(Text, nullable=False)
+    avito_user_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        unique=True,
+    )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
         server_default=text("true"),
+    )
+    last_inbox_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_inbox_sync_status: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    last_inbox_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -42,6 +59,22 @@ class AvitoAccount(Base):
     )
     module_runs: Mapped[list["ModuleRun"]] = relationship(back_populates="account")
     action_logs: Mapped[list["ActionLog"]] = relationship(back_populates="account")
+    avito_clients: Mapped[list["AvitoClient"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
+    avito_listings: Mapped[list["AvitoListingRef"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
+    avito_chats: Mapped[list["AvitoChat"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
+    avito_messages: Mapped[list["AvitoMessage"]] = relationship(
+        back_populates="account",
+        cascade="all, delete-orphan",
+    )
 
 
 class Module(Base):

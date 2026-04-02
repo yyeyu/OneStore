@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Messages</h2>
+            <p>Read-only message feed with lightweight filtering.</p>
+        </div>
+    </div>
+    <form class="filter-bar" method="get">
+        <label>
+            Account
+            <select name="account_id">
+                <option value="">All</option>
+                {% for account in page.accounts %}
+                    <option value="{{ account.id }}" {% if page.account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Chat ID
+            <input type="number" name="chat_id" value="{{ page.chat_id or '' }}">
+        </label>
+        <label>
+            Direction
+            <select name="direction">
+                <option value="">All</option>
+                <option value="in" {% if page.direction == 'in' %}selected{% endif %}>in</option>
+                <option value="out" {% if page.direction == 'out' %}selected{% endif %}>out</option>
+            </select>
+        </label>
+        <label>
+            Type
+            <input type="text" name="message_type" value="{{ page.message_type or '' }}" placeholder="text">
+        </label>
+        <button type="submit">Apply</button>
+    </form>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>Chat</th>
+                    <th>Direction</th>
+                    <th>Type</th>
+                    <th>Text</th>
+                    <th>Read</th>
+                    <th>External Created</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in page.messages %}
+                <tr>
+                    <td>{{ row.account_name or row.message.account_id }}</td>
+                    <td>{{ row.chat_external_id or row.message.chat_id }}</td>
+                    <td>{{ row.message.direction }}</td>
+                    <td>{{ row.message.message_type }}</td>
+                    <td>{{ row.message.text or row.message.content_json }}</td>
+                    <td>{{ row.message.is_read if row.message.is_read is not none else "-" }}</td>
+                    <td>{{ row.message.external_created_at|datetime }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">No messages matched the current filters.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

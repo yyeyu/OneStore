@@ -1,4 +1,4 @@
-"""Module 0 stage 0.2 baseline."""
+"""Platform core stage 0.2 baseline."""
 
 revision = "0001_baseline"
 down_revision = None
@@ -7,7 +7,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Create the baseline migration chain for Module 0."""
+    """Create the baseline migration chain for the platform core."""
     pass
 
 

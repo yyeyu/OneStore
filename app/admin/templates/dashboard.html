@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="metric-grid">
+    <article class="metric-card">
+        <span class="metric-label">Accounts</span>
+        <strong>{{ page.summary.total_accounts }}</strong>
+        <small>{{ page.inbox_enabled_accounts }} with module2_inbox</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Chats</span>
+        <strong>{{ page.summary.total_chats }}</strong>
+        <small>{{ page.summary.total_messages }} messages</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Entities</span>
+        <strong>{{ page.summary.total_clients }}</strong>
+        <small>{{ page.summary.total_listings }} listings</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Latest Sync</span>
+        <strong>{{ page.latest_sync_at|datetime }}</strong>
+        <small>{{ page.error_account_count }} accounts with errors</small>
+    </article>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Per-account inbox state</h2>
+            <p>Last sync timestamps, counts and error state for every account.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>Avito User</th>
+                    <th>Last Sync</th>
+                    <th>Status</th>
+                    <th>Chats</th>
+                    <th>Messages</th>
+                    <th>Error</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for account in page.accounts %}
+                <tr>
+                    <td>{{ account.account_name }}</td>
+                    <td>{{ account.avito_user_id or "-" }}</td>
+                    <td>{{ account.last_inbox_sync_at|datetime }}</td>
+                    <td><span class="status-chip status-{{ account.last_inbox_sync_status or 'unknown' }}">{{ account.last_inbox_sync_status or "unknown" }}</span></td>
+                    <td>{{ account.chat_count }}</td>
+                    <td>{{ account.message_count }}</td>
+                    <td class="error-cell">{{ account.last_inbox_error or "-" }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7" class="empty-state">No accounts configured yet.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -1,4 +1,4 @@
-"""Demonstration actions for Module 0."""
+"""Temporary platform probe actions used in smoke checks."""
 
 from __future__ import annotations
 
@@ -8,11 +8,11 @@ from app.actions.base import ActionResult, BaseAction
 from app.actions.executor import ActionExecutor
 
 
-class DemoDispatchAction(BaseAction):
-    """Mock outward action used in tests and smoke checks."""
+class ProbeDispatchAction(BaseAction):
+    """Temporary outward action used to validate the action runtime."""
 
-    action_name = "demo_dispatch"
-    module_name = "module0"
+    action_name = "probe_dispatch"
+    module_name = "system_core"
 
     def __init__(
         self,
@@ -29,17 +29,17 @@ class DemoDispatchAction(BaseAction):
 
     def run(self) -> dict[str, object]:
         if self._should_fail:
-            raise RuntimeError("Demo action failed on purpose.")
+            raise RuntimeError("Probe action failed on purpose.")
         receipt_hash = sha256(f"{self._target}|{self._message}".encode("utf-8")).hexdigest()[:12]
         return {
-            "delivery_state": "mock_dispatched",
-            "mock_receipt": f"demo-{receipt_hash}",
+            "delivery_state": "probe_dispatched",
+            "probe_receipt": f"probe-{receipt_hash}",
             "target": self._target,
             "message": self._message,
         }
 
 
-def execute_demo_action(
+def execute_probe_action(
     *,
     target: str,
     message: str,
@@ -48,8 +48,8 @@ def execute_demo_action(
     should_fail: bool = False,
     executor: ActionExecutor | None = None,
 ) -> ActionResult:
-    """Execute demo action through the shared executor."""
-    action = DemoDispatchAction(
+    """Execute the temporary probe action through the shared executor."""
+    action = ProbeDispatchAction(
         target=target,
         message=message,
         account_id=account_id,

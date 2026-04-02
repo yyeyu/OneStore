@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Accounts</h2>
+            <p>{{ page.total_accounts }} total, {{ page.inbox_enabled_accounts }} with module2_inbox enabled.</p>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Avito User</th>
+                    <th>Active</th>
+                    <th>module2_inbox</th>
+                    <th>Last Sync</th>
+                    <th>Status</th>
+                    <th>Error</th>
+                    <th>Quick Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for account in page.accounts %}
+                <tr>
+                    <td>{{ account.id }}</td>
+                    <td>{{ account.name }}</td>
+                    <td>{{ account.avito_user_id or "-" }}</td>
+                    <td><span class="status-chip status-{{ 'success' if account.is_active else 'error' }}">{{ "active" if account.is_active else "inactive" }}</span></td>
+                    <td><span class="status-chip status-{{ 'success' if account.module2_inbox_enabled else 'unknown' }}">{{ "enabled" if account.module2_inbox_enabled else "disabled" }}</span></td>
+                    <td>{{ account.last_inbox_sync_at|datetime }}</td>
+                    <td><span class="status-chip status-{{ account.last_inbox_sync_status or 'unknown' }}">{{ account.last_inbox_sync_status or "unknown" }}</span></td>
+                    <td class="error-cell">{{ account.last_inbox_error or "-" }}</td>
+                    <td>
+                        <button
+                            class="sync-button"
+                            data-account-id="{{ account.id }}"
+                            data-sync-url="/inbox/sync/accounts/{{ account.id }}"
+                            {% if not account.can_sync %}disabled{% endif %}
+                        >
+                            Sync
+                        </button>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="9" class="empty-state">No accounts configured yet.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

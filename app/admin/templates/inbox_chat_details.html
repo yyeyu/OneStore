@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="detail-grid">
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Chat Header</h2>
+                <p>{{ page.account_name or page.details.chat.account_id }} · {{ page.details.chat.external_chat_id }}</p>
+            </div>
+        </div>
+        <dl class="detail-list">
+            <div><dt>Chat Type</dt><dd>{{ page.details.chat.chat_type }}</dd></div>
+            <div><dt>External Created</dt><dd>{{ page.details.chat.external_created_at|datetime }}</dd></div>
+            <div><dt>External Updated</dt><dd>{{ page.details.chat.external_updated_at|datetime }}</dd></div>
+            <div><dt>Last Message</dt><dd>{{ page.details.chat.last_message_at|datetime }}</dd></div>
+            <div><dt>Direction</dt><dd>{{ page.details.chat.last_message_direction or "-" }}</dd></div>
+            <div><dt>Type</dt><dd>{{ page.details.chat.last_message_type or "-" }}</dd></div>
+            <div><dt>Message Count</dt><dd>{{ page.details.chat.message_count or 0 }}</dd></div>
+        </dl>
+    </article>
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Counterparty</h2>
+                <p>Resolved from users[] during normalization.</p>
+            </div>
+        </div>
+        {% if page.details.client %}
+            <dl class="detail-list">
+                <div><dt>Name</dt><dd>{{ page.details.client.display_name or "-" }}</dd></div>
+                <div><dt>External User</dt><dd>{{ page.details.client.external_user_id }}</dd></div>
+                <div><dt>Profile</dt><dd>{% if page.details.client.profile_url %}<a href="{{ page.details.client.profile_url }}">{{ page.details.client.profile_url }}</a>{% else %}-{% endif %}</dd></div>
+            </dl>
+        {% else %}
+            <p class="empty-note">No client was resolved for this chat.</p>
+        {% endif %}
+    </article>
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Listing</h2>
+                <p>Resolved from chat context.</p>
+            </div>
+        </div>
+        {% if page.details.listing %}
+            <dl class="detail-list">
+                <div><dt>Title</dt><dd>{{ page.details.listing.title or "-" }}</dd></div>
+                <div><dt>External Item</dt><dd>{{ page.details.listing.external_item_id }}</dd></div>
+                <div><dt>Price</dt><dd>{{ page.details.listing.price_string or "-" }}</dd></div>
+                <div><dt>URL</dt><dd>{% if page.details.listing.url %}<a href="{{ page.details.listing.url }}">{{ page.details.listing.url }}</a>{% else %}-{% endif %}</dd></div>
+            </dl>
+        {% else %}
+            <p class="empty-note">This chat is not linked to a listing.</p>
+        {% endif %}
+    </article>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Messages</h2>
+            <p>Chronological message history for this chat.</p>
+        </div>
+    </div>
+    <div class="message-stack">
+        {% for message in page.details.messages %}
+            <article class="message-card direction-{{ message.direction }}">
+                <header>
+                    <strong>{{ message.direction }}</strong>
+                    <span>{{ message.message_type }}</span>
+                    <time>{{ message.external_created_at|datetime }}</time>
+                </header>
+                <div class="message-body">
+                    {% if message.text %}
+                        <p>{{ message.text }}</p>
+                    {% else %}
+                        <pre>{{ message.content_json }}</pre>
+                    {% endif %}
+                    {% if message.quote_json %}
+                        <blockquote>{{ message.quote_json }}</blockquote>
+                    {% endif %}
+                </div>
+            </article>
+        {% else %}
+            <p class="empty-state">No messages stored for this chat.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

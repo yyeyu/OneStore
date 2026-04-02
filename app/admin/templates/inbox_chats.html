@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="panel">
+    <div class="panel-header">
+        <div>
+            <h2>Chats</h2>
+            <p>Read-only chat list from module2_inbox.</p>
+        </div>
+    </div>
+    <form class="filter-bar" method="get">
+        <label>
+            Account
+            <select name="account_id">
+                <option value="">All</option>
+                {% for account in page.accounts %}
+                    <option value="{{ account.id }}" {% if page.account_id == account.id %}selected{% endif %}>{{ account.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Chat Type
+            <select name="chat_type">
+                <option value="">All</option>
+                <option value="u2i" {% if page.chat_type == 'u2i' %}selected{% endif %}>u2i</option>
+                <option value="u2u" {% if page.chat_type == 'u2u' %}selected{% endif %}>u2u</option>
+            </select>
+        </label>
+        <label>
+            Has Listing
+            <select name="has_listing">
+                <option value="">All</option>
+                <option value="true" {% if page.has_listing is sameas true %}selected{% endif %}>Yes</option>
+                <option value="false" {% if page.has_listing is sameas false %}selected{% endif %}>No</option>
+            </select>
+        </label>
+        <button type="submit">Apply</button>
+    </form>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th>External Chat</th>
+                    <th>Type</th>
+                    <th>Client</th>
+                    <th>Listing</th>
+                    <th>Last Message At</th>
+                    <th>Direction</th>
+                    <th>Message Type</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for chat in page.chats %}
+                <tr>
+                    <td>{{ chat.account_name or chat.account_id }}</td>
+                    <td><a href="/admin/inbox/chats/{{ chat.id }}?account_id={{ chat.account_id }}">{{ chat.external_chat_id }}</a></td>
+                    <td>{{ chat.chat_type }}</td>
+                    <td>{{ chat.client_name or "-" }}</td>
+                    <td>{{ chat.listing_title or "-" }}</td>
+                    <td>{{ chat.last_message_at|datetime }}</td>
+                    <td>{{ chat.last_message_direction or "-" }}</td>
+                    <td>{{ chat.last_message_type or "-" }}</td>
+                    <td>{{ chat.message_count or 0 }}</td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="9" class="empty-state">No chats matched the current filters.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

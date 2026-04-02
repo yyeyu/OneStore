@@ -1,7 +1,7 @@
-"""Job execution primitives for Module 0."""
+"""Job execution primitives for the platform core."""
 
 from app.jobs.context import RunContext
-from app.jobs.ping import PingJob
+from app.jobs.system_probe import SystemProbeJob
 from app.jobs.registry import (
     JobDefinition,
     get_job_definition,
@@ -19,7 +19,7 @@ __all__ = [
     "JobRunResult",
     "JobRunner",
     "list_job_definitions",
-    "PingJob",
+    "SystemProbeJob",
     "RunContext",
     "run_registered_job",
     "run_registered_jobs_for_accounts",

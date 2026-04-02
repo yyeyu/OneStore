@@ -134,7 +134,7 @@ def configure_logging(
     level: str = "INFO",
     log_format: str = "text",
     *,
-    service: str = "Avito AI Assistant",
+    service: str = "OneStore",
     environment: str = "local",
 ) -> None:
     """Configure process-wide logging once and keep the level adjustable."""

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="metric-grid">
+    <article class="metric-card">
+        <span class="metric-label">Service</span>
+        <strong>{{ page.system.service }}</strong>
+        <small>{{ page.system.environment }}</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Version</span>
+        <strong>{{ page.system.version }}</strong>
+        <small>debug={{ page.system.debug }}</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Logging</span>
+        <strong>{{ page.system.log_level }}</strong>
+        <small>{{ page.system.log_format }}</small>
+    </article>
+    <article class="metric-card">
+        <span class="metric-label">Accounts</span>
+        <strong>{{ page.total_accounts }}</strong>
+        <small>configured in platform core</small>
+    </article>
+</section>
+
+<section class="detail-grid">
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Module Catalog</h2>
+                <p>Current platform modules registered in the database.</p>
+            </div>
+        </div>
+        <ul class="simple-list">
+            {% for module in page.modules %}
+                <li><strong>{{ module.name }}</strong> <span>#{{ module.id }}</span></li>
+            {% else %}
+                <li>No modules registered yet.</li>
+            {% endfor %}
+        </ul>
+    </article>
+    <article class="panel">
+        <div class="panel-header">
+            <div>
+                <h2>Job Registry</h2>
+                <p>Jobs exposed by the current runtime.</p>
+            </div>
+        </div>
+        <ul class="simple-list">
+            {% for job in page.jobs %}
+                <li>
+                    <strong>{{ job.name }}</strong>
+                    <span>{{ job.module_name }}</span>
+                    <small>{{ job.description }}</small>
+                </li>
+            {% else %}
+                <li>No jobs registered yet.</li>
+            {% endfor %}
+        </ul>
+    </article>
+</section>
+{% endblock %}

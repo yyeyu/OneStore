@@ -12,13 +12,13 @@ class Settings(BaseSettings):
     """Application settings for the current environment."""
 
     model_config = SettingsConfigDict(
-        env_prefix="AVITO_AI_",
+        env_prefix="ONESTORE_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    app_name: str = "Avito AI Assistant"
+    app_name: str = "OneStore"
     environment: str = "local"
     debug: bool = False
     host: str = "127.0.0.1"
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "text"
     database_url: str = (
-        "postgresql+psycopg://postgres:postgres@127.0.0.1:5433/avito_ai_assistant"
+        "postgresql+psycopg://postgres:postgres@127.0.0.1:5433/onestore"
     )
     db_echo: bool = False
     db_pool_pre_ping: bool = True

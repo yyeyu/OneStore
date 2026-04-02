@@ -26,7 +26,7 @@ class BaseAction(ABC):
     """Base outward action."""
 
     action_name: str
-    module_name: str = "module0"
+    module_name: str = "system_core"
 
     def __init__(self, *, account_id: int | None = None):
         self.account_id = account_id

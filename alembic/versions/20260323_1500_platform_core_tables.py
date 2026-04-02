@@ -1,8 +1,9 @@
-"""Module 0 core tables aligned with the simplified schema."""
+"""Platform core tables aligned with the simplified schema."""
 
 from alembic import op
 import sqlalchemy as sa
 
+# Kept unchanged to avoid breaking already-initialized local Alembic histories.
 revision = "0002_module0_core_tables"
 down_revision = "0001_baseline"
 branch_labels = None
@@ -10,7 +11,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Create simplified Module 0 tables."""
+    """Create simplified platform core tables."""
     op.create_table(
         "avito_accounts",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -149,7 +150,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop simplified Module 0 tables."""
+    """Drop simplified platform core tables."""
     op.drop_index("ix_action_logs_run_id", table_name="action_logs")
     op.drop_index("ix_action_logs_account_id", table_name="action_logs")
     op.drop_table("action_logs")

@@ -1,12 +1,12 @@
-# Avito AI Assistant
+# OneStore
 
-Module `0` is a minimal platform core with a simplified database schema and
-runtime flow.
+OneStore platform core. This repository contains the shared system foundation
+for the next product modules, not the full customer-facing automation stack.
 
-## What Module 0 includes
+## What The Platform Core Includes
 
 - FastAPI app with `/health` and `/version`
-- Typer CLI for system checks, account/module ops, jobs, actions, smoke checks
+- Typer CLI for system checks, account/module operations, jobs, actions, and smoke checks
 - PostgreSQL + SQLAlchemy 2 + Alembic foundation
 - Core tables:
   - `avito_accounts`
@@ -14,12 +14,30 @@ runtime flow.
   - `module_account_settings`
   - `module_runs`
   - `action_logs`
+- Module 2 inbox tables:
+  - `avito_chats`
+  - `avito_messages`
+  - `avito_clients`
+  - `avito_listings_ref`
+- Account and module enablement management
+- Shared job runtime and scheduler bootstrap
+- Shared action audit logging
+- Compact smoke-check flow
 
-## Database schema summary
+Temporary probe job/action utilities are kept only to validate the platform
+runtime. They are scaffold checks, not product business logic.
+
+## Default Module Catalog
+
+- `system_core`
+- `module2_inbox`
+
+## Database Schema Summary
 
 1. `avito_accounts`
    - `id` INTEGER PK
-   - `name`, `client_id` (UNIQUE), `client_secret`, `is_active`
+   - `name`, `client_id` (UNIQUE), `client_secret`, `avito_user_id` (UNIQUE, nullable)
+   - `is_active`, `last_inbox_sync_at`, `last_inbox_sync_status`, `last_inbox_error`
    - `created_at`, `updated_at`
 2. `modules`
    - `id` INTEGER PK
@@ -36,15 +54,29 @@ runtime flow.
    - `id` INTEGER PK
    - `account_id` (nullable), `run_id` (nullable)
    - `action_name`, `status` (`success`/`error`), `error_message`, `created_at`
+6. `avito_chats`
+   - `id` INTEGER PK
+   - `account_id`, `external_chat_id`, `chat_type`
+   - `client_id`, `listing_id`, external timestamps and last-message summary fields
+7. `avito_messages`
+   - `id` INTEGER PK
+   - `account_id`, `chat_id`, `external_message_id`
+   - `direction`, `message_type`, `text`, `content_json`, `quote_json`
+8. `avito_clients`
+   - `id` INTEGER PK
+   - `account_id`, `external_user_id`, profile snapshot fields
+9. `avito_listings_ref`
+   - `id` INTEGER PK
+   - `account_id`, `external_item_id`, lightweight listing snapshot fields
 
-## Official runtime contour
+## Official Runtime Contour
 
 - Python: `3.13`
 - PostgreSQL host port: `5433`
 - Local DB DSN:
-  `postgresql+psycopg://postgres:postgres@127.0.0.1:5433/avito_ai_assistant`
+  `postgresql+psycopg://postgres:postgres@127.0.0.1:5433/onestore`
 
-## Quick start
+## Quick Start
 
 ### 1. Create local virtual environment
 
@@ -82,19 +114,20 @@ python -m app.main ensure-default-modules
 python -m app.main list-modules
 ```
 
-### 6. Create account and enable module
+### 6. Create account and enable the core module
 
 ```powershell
-python -m app.main create-account "Local Dev Account" "local-dev-client" "local-dev-secret"
-python -m app.main set-module 1 module0 --enabled
+python -m app.main create-account "Local Dev Account" "local-dev-client" "local-dev-secret" --avito-user-id "shop-user-1"
+python -m app.main set-module 1 system_core --enabled
 python -m app.main list-module-settings --account-id 1
 ```
 
-### 7. Run job and action
+### 7. Run temporary runtime probes
 
 ```powershell
-python -m app.main run-job account-ping --account-id 1
-python -m app.main run-demo-action smoke-target "hello"
+python -m app.main run-job system-probe
+python -m app.main run-job account-system-probe --account-id 1
+python -m app.main run-probe-action smoke-target "hello"
 ```
 
 ### 8. Run smoke check
@@ -103,31 +136,28 @@ python -m app.main run-demo-action smoke-target "hello"
 python -m app.main smoke-check
 ```
 
-## Useful CLI commands
+## Useful CLI Commands
 
 ```powershell
 python -m app.main check-system
 python -m app.main check-db
-python -m app.main create-account "Shop A" "shop-a-client" "shop-a-secret"
+python -m app.main create-account "Shop A" "shop-a-client" "shop-a-secret" --avito-user-id "shop-a-user"
 python -m app.main list-accounts
-python -m app.main create-module module0
+python -m app.main create-module module2_inbox
 python -m app.main list-modules
 python -m app.main ensure-default-modules
-python -m app.main set-module 1 module0 --enabled
+python -m app.main set-module 1 system_core --enabled
 python -m app.main list-module-settings --account-id 1
 python -m app.main bootstrap-local
-python -m app.main run-job ping
-python -m app.main run-job account-ping --account-id 1
+python -m app.main run-system-probe
+python -m app.main run-job account-system-probe --account-id 1
 python -m app.main run-scheduler --interval-seconds 1 --duration-seconds 3
-python -m app.main run-demo-action test-target "hello"
+python -m app.main run-probe-action test-target "hello"
 python -m app.main smoke-check
+python -m app.main serve --reload
 ```
 
 ## API
-
-```powershell
-python -m app.main serve --reload
-```
 
 Then open:
 
@@ -137,9 +167,9 @@ Then open:
 ## Tests
 
 ```powershell
-pytest
-pytest -m integration
-pytest -m "not integration"
+python -m pytest -q -m "not integration"
+python -m pytest -q
+python -m pytest -q -m integration
 ```
 
 Notes:

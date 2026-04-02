@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }} · OneStore Admin</title>
+    <link rel="stylesheet" href="{{ url_for('admin-static', path='admin.css') }}">
+</head>
+<body>
+    <div class="admin-shell">
+        <aside class="admin-sidebar">
+            <a class="brand" href="/admin/">
+                <span class="brand-mark">OS</span>
+                <span>
+                    <strong>OneStore</strong>
+                    <small>Operator Console</small>
+                </span>
+            </a>
+            <nav class="admin-nav">
+                <a class="{% if section == 'dashboard' %}is-active{% endif %}" href="/admin/">Dashboard</a>
+                <a class="{% if section == 'accounts' %}is-active{% endif %}" href="/admin/accounts">Accounts</a>
+                <a class="{% if section == 'chats' %}is-active{% endif %}" href="/admin/inbox/chats">Chats</a>
+                <a class="{% if section == 'messages' %}is-active{% endif %}" href="/admin/inbox/messages">Messages</a>
+                <a class="{% if section == 'clients' %}is-active{% endif %}" href="/admin/inbox/clients">Clients</a>
+                <a class="{% if section == 'listings' %}is-active{% endif %}" href="/admin/inbox/listings">Listings</a>
+                <a class="{% if section == 'system' %}is-active{% endif %}" href="/admin/system">System</a>
+            </nav>
+        </aside>
+        <main class="admin-main">
+            <header class="page-header">
+                <div>
+                    <p class="eyebrow">Embedded admin panel</p>
+                    <h1>{{ title }}</h1>
+                </div>
+                <div class="page-actions">
+                    <a class="ghost-button" href="/docs">API Docs</a>
+                </div>
+            </header>
+            <div id="admin-flash" class="flash hidden"></div>
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    <script src="{{ url_for('admin-static', path='admin.js') }}" defer></script>
+</body>
+</html>

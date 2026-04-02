@@ -1,4 +1,4 @@
-"""Operational helpers for account and module management."""
+"""Operational helpers for platform account and module management."""
 
 from __future__ import annotations
 
@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session, joinedload, sessionmaker
 from app.db.models import AvitoAccount, Module, ModuleAccountSetting
 from app.db.session import get_session_factory
 
-DEFAULT_MODULE_NAMES = ("module0", "messaging", "catalog", "notifications")
+DEFAULT_MODULE_NAMES = (
+    "system_core",
+    "module2_inbox",
+)
 
 
 class ModuleOperationsError(ValueError):
@@ -29,7 +32,11 @@ class AccountSummary(BaseModel):
     id: int
     name: str
     client_id: str
+    avito_user_id: str | None = None
     is_active: bool
+    last_inbox_sync_at: datetime | None = None
+    last_inbox_sync_status: str | None = None
+    last_inbox_error: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -95,12 +102,17 @@ class ModuleOperationsService:
         name: str,
         client_id: str,
         client_secret: str,
+        avito_user_id: str | None = None,
         is_active: bool = True,
     ) -> AccountMutationResult:
         """Create one account."""
         normalized_name = self._normalize_non_empty(name, field="name")
         normalized_client_id = self._normalize_non_empty(client_id, field="client_id")
         normalized_secret = self._normalize_non_empty(client_secret, field="client_secret")
+        normalized_avito_user_id = self._normalize_optional_non_empty(
+            avito_user_id,
+            field="avito_user_id",
+        )
 
         with self._session_factory() as session:
             existing = session.execute(
@@ -111,11 +123,26 @@ class ModuleOperationsService:
                     "client_id_exists",
                     f"Account with client_id '{normalized_client_id}' already exists.",
                 )
+            if normalized_avito_user_id is not None:
+                existing_avito_user = session.execute(
+                    select(AvitoAccount).where(
+                        AvitoAccount.avito_user_id == normalized_avito_user_id
+                    )
+                ).scalar_one_or_none()
+                if existing_avito_user is not None:
+                    raise ModuleOperationsError(
+                        "avito_user_id_exists",
+                        (
+                            "Account with avito_user_id "
+                            f"'{normalized_avito_user_id}' already exists."
+                        ),
+                    )
 
             account = AvitoAccount(
                 name=normalized_name,
                 client_id=normalized_client_id,
                 client_secret=normalized_secret,
+                avito_user_id=normalized_avito_user_id,
                 is_active=is_active,
             )
             session.add(account)
@@ -301,29 +328,53 @@ class ModuleOperationsService:
         name: str = "Local Dev Account",
         client_id: str = "local-dev-client",
         client_secret: str = "local-dev-secret",
-        module_name: str = "module0",
+        avito_user_id: str | None = None,
+        module_name: str = "system_core",
     ) -> LocalBootstrapSummary:
-        """Idempotently bootstrap one local account and enable one module."""
+        """Idempotently bootstrap one local account and enable one core module."""
         normalized_name = self._normalize_non_empty(name, field="name")
         normalized_client_id = self._normalize_non_empty(client_id, field="client_id")
         normalized_secret = self._normalize_non_empty(client_secret, field="client_secret")
+        normalized_avito_user_id = self._normalize_optional_non_empty(
+            avito_user_id,
+            field="avito_user_id",
+        )
         normalized_module_name = self._normalize_non_empty(module_name, field="module_name")
 
         with self._session_factory() as session:
             account = session.execute(
                 select(AvitoAccount).where(AvitoAccount.client_id == normalized_client_id)
             ).scalar_one_or_none()
+            if normalized_avito_user_id is not None:
+                account_by_avito_user = session.execute(
+                    select(AvitoAccount).where(
+                        AvitoAccount.avito_user_id == normalized_avito_user_id
+                    )
+                ).scalar_one_or_none()
+                if account_by_avito_user is not None and (
+                    account is None or account_by_avito_user.id != account.id
+                ):
+                    raise ModuleOperationsError(
+                        "avito_user_id_exists",
+                        (
+                            "Account with avito_user_id "
+                            f"'{normalized_avito_user_id}' already exists."
+                        ),
+                    )
             created_account = account is None
             if account is None:
                 account = AvitoAccount(
                     name=normalized_name,
                     client_id=normalized_client_id,
                     client_secret=normalized_secret,
+                    avito_user_id=normalized_avito_user_id,
                     is_active=True,
                 )
             else:
                 account.name = normalized_name
                 account.client_secret = normalized_secret
+                if normalized_avito_user_id is not None:
+                    account.avito_user_id = normalized_avito_user_id
                 account.is_active = True
 
             session.add(account)
@@ -381,13 +432,28 @@ class ModuleOperationsService:
             )
         return normalized
 
+    @classmethod
+    def _normalize_optional_non_empty(
+        cls,
+        value: str | None,
+        *,
+        field: str,
+    ) -> str | None:
+        if value is None:
+            return None
+        return cls._normalize_non_empty(value, field=field)
+
     @staticmethod
     def _build_account_summary(account: AvitoAccount) -> AccountSummary:
         return AccountSummary(
             id=account.id,
             name=account.name,
             client_id=account.client_id,
+            avito_user_id=account.avito_user_id,
             is_active=account.is_active,
+            last_inbox_sync_at=account.last_inbox_sync_at,
+            last_inbox_sync_status=account.last_inbox_sync_status,
+            last_inbox_error=account.last_inbox_error,
             created_at=account.created_at,
             updated_at=account.updated_at,
         )

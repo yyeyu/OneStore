@@ -19,7 +19,7 @@ def test_configure_logging_text_includes_stable_fields_and_extras() -> None:
     configure_logging(
         "INFO",
         "text",
-        service="Avito AI Assistant",
+        service="OneStore",
         environment="test",
     )
     stream = _capture_root_stream()
@@ -27,8 +27,8 @@ def test_configure_logging_text_includes_stable_fields_and_extras() -> None:
     logging.getLogger("test.text").info(
         "hello text logs",
         extra={
-            "module_name": "module0",
-            "job_name": "ping",
+            "module_name": "system_core",
+            "job_name": "system-probe",
             "run_id": "run-1",
             "module_id": 1,
             "account_id": "acc-1",
@@ -39,12 +39,12 @@ def test_configure_logging_text_includes_stable_fields_and_extras() -> None:
 
     output = stream.getvalue()
     assert "hello text logs" in output
-    assert "service=Avito AI Assistant" in output
+    assert "service=OneStore" in output
     assert "environment=test" in output
     assert "run_id=run-1" in output
     assert "module_id=1" in output
-    assert "module_name=module0" in output
-    assert "job_name=ping" in output
+    assert "module_name=system_core" in output
+    assert "job_name=system-probe" in output
     assert "account_id=acc-1" in output
     assert "status=success" in output
     assert '"custom_detail": "visible"' in output
@@ -54,7 +54,7 @@ def test_configure_logging_json_emits_structured_payload() -> None:
     configure_logging(
         "INFO",
         "json",
-        service="Avito AI Assistant",
+        service="OneStore",
         environment="test-json",
     )
     stream = _capture_root_stream()
@@ -62,16 +62,16 @@ def test_configure_logging_json_emits_structured_payload() -> None:
     logging.getLogger("test.json").warning(
         "hello json logs",
         extra={
-            "module_name": "module0",
+            "module_name": "system_core",
             "status": "warning",
-            "registered_jobs": ["job:ping"],
+            "registered_jobs": ["job:system-probe"],
         },
     )
 
     payload = json.loads(stream.getvalue())
     assert payload["message"] == "hello json logs"
-    assert payload["service"] == "Avito AI Assistant"
+    assert payload["service"] == "OneStore"
     assert payload["environment"] == "test-json"
-    assert payload["module_name"] == "module0"
+    assert payload["module_name"] == "system_core"
     assert payload["status"] == "warning"
-    assert payload["registered_jobs"] == ["job:ping"]
+    assert payload["registered_jobs"] == ["job:system-probe"]
